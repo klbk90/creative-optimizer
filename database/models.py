@@ -1,0 +1,462 @@
+"""
+SQLAlchemy models for PostgreSQL database.
+"""
+
+import uuid
+from datetime import datetime
+from sqlalchemy import Column, String, Integer, Boolean, DateTime, Text, ForeignKey, ARRAY, JSON, BigInteger
+from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.orm import relationship
+from .base import Base
+
+
+class User(Base):
+    """User model for SaaS multi-tenancy."""
+
+    __tablename__ = "users"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    email = Column(String(255), unique=True, nullable=False, index=True)
+    password_hash = Column(String(255), nullable=False)
+    telegram_id = Column(BigInteger, unique=True, nullable=True, index=True)
+    subscription_tier = Column(String(50), default="free", nullable=False)
+    is_active = Column(Boolean, default=True)
+    is_admin = Column(Boolean, default=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    # Relationships
+    channels = relationship("Channel", back_populates="user", cascade="all, delete-orphan")
+    posts = relationship("Post", back_populates="user", cascade="all, delete-orphan")
+    subscriptions = relationship("Subscription", back_populates="user", cascade="all, delete-orphan")
+    api_usage = relationship("APIUsage", back_populates="user", cascade="all, delete-orphan")
+
+    def __repr__(self):
+        return f"<User(id={self.id}, email={self.email})>"
+
+
+class Subscription(Base):
+    """User subscription and billing information."""
+
+    __tablename__ = "subscriptions"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
+    plan = Column(String(50), nullable=False)  # free, starter, pro, enterprise
+    status = Column(String(50), nullable=False)  # active, cancelled, expired, past_due
+    current_period_start = Column(DateTime)
+    current_period_end = Column(DateTime)
+    cancel_at_period_end = Column(Boolean, default=False)
+    stripe_subscription_id = Column(String(255), unique=True, nullable=True)
+    stripe_customer_id = Column(String(255), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    # Relationships
+    user = relationship("User", back_populates="subscriptions")
+
+    def __repr__(self):
+        return f"<Subscription(id={self.id}, user_id={self.user_id}, plan={self.plan})>"
+
+
+class Channel(Base):
+    """Channel configuration (migrated from config.yaml)."""
+
+    __tablename__ = "channels"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True)
+    name = Column(String(100), nullable=False)
+    source_channels = Column(ARRAY(String), nullable=False)  # [@channel1, @channel2]
+    target_channel = Column(String(100), nullable=False)
+
+    # Settings (JSONB for flexibility - keeps all existing config structure)
+    settings = Column(JSON, nullable=False, default={})
+    """
+    Example settings structure:
+    {
+        "rewrite_style": "engaging",
+        "generate_images": true,
+        "image_generation_style": "football",
+        "process_videos": true,
+        "process_albums": "first_only",
+        "min_text_length": 10,
+        "message_effect": null,
+        "filters": {
+            "skip_forwarded": false,
+            "skip_without_media": false,
+            "keywords_blacklist": []
+        }
+    }
+    """
+
+    enabled = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    # Relationships
+    user = relationship("User", back_populates="channels")
+    posts = relationship("Post", back_populates="channel", cascade="all, delete-orphan")
+
+    def __repr__(self):
+        return f"<Channel(id={self.id}, name={self.name}, target={self.target_channel})>"
+
+
+class Post(Base):
+    """Post history (migrated from processed_posts.json)."""
+
+    __tablename__ = "posts"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True)
+    channel_id = Column(UUID(as_uuid=True), ForeignKey("channels.id"), nullable=True)
+
+    # Source info
+    source_channel = Column(String(100), nullable=False)
+    source_message_id = Column(BigInteger, nullable=False)
+
+    # Target info
+    target_channel = Column(String(100), nullable=False)
+    target_message_id = Column(BigInteger, nullable=True)
+
+    # Content
+    original_text = Column(Text)
+    rewritten_text = Column(Text)
+    media_type = Column(String(50))  # photo, video, album, document, none
+
+    # Status
+    status = Column(String(50), nullable=False, index=True)  # pending, approved, rejected, published, failed
+    moderation_status = Column(String(50))  # pending, approved, rejected
+
+    # Metadata (JSONB for flexibility)
+    metadata = Column(JSON, default={})
+    """
+    Example metadata:
+    {
+        "image_source_type": "search",
+        "image_search_query": "football match",
+        "image_generation_style": "sports_action",
+        "is_forwarded": false,
+        "media_path": "temp/photo.jpg"
+    }
+    """
+
+    # Timestamps
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+    moderated_at = Column(DateTime)
+    published_at = Column(DateTime)
+
+    # Relationships
+    user = relationship("User", back_populates="posts")
+    channel = relationship("Channel", back_populates="posts")
+
+    def __repr__(self):
+        return f"<Post(id={self.id}, status={self.status}, source={self.source_channel})>"
+
+
+class APIUsage(Base):
+    """API usage tracking for billing and quotas."""
+
+    __tablename__ = "api_usage"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True)
+
+    resource = Column(String(100), nullable=False)  # claude_api, replicate_api, google_search, etc
+    usage_count = Column(Integer, default=0, nullable=False)
+
+    # Billing period
+    period_start = Column(DateTime, nullable=False)
+    period_end = Column(DateTime, nullable=False)
+
+    # Cost tracking (optional)
+    cost_usd = Column(Integer, default=0)  # in cents
+
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    # Relationships
+    user = relationship("User", back_populates="api_usage")
+
+    def __repr__(self):
+        return f"<APIUsage(user_id={self.user_id}, resource={self.resource}, count={self.usage_count})>"
+
+
+# Index definitions for better query performance
+from sqlalchemy import Index
+
+# Post indexes for common queries
+Index("idx_posts_user_status", Post.user_id, Post.status)
+Index("idx_posts_created_at_desc", Post.created_at.desc())
+
+# Channel indexes
+Index("idx_channels_user_enabled", Channel.user_id, Channel.enabled)
+
+# API Usage indexes
+Index("idx_api_usage_user_period", APIUsage.user_id, APIUsage.period_start, APIUsage.period_end)
+
+
+# ==================== TIKTOK TRACKING MODELS ====================
+
+class TrafficSource(Base):
+    """
+    UTM tracking for traffic sources.
+    Tracks where users come from (TikTok, Instagram, etc.)
+    """
+
+    __tablename__ = "traffic_sources"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True)
+
+    # UTM parameters
+    utm_source = Column(String(100), nullable=False, index=True)  # tiktok, instagram, youtube
+    utm_medium = Column(String(100))  # social, video, paid
+    utm_campaign = Column(String(200), index=True)  # football_jan_2025
+    utm_content = Column(String(200))  # video_id or creative_variant
+    utm_term = Column(String(200))  # keywords or targeting
+    utm_id = Column(String(100), unique=True, index=True)  # unique tracking ID
+
+    # Landing info
+    landing_page = Column(String(500))  # URL where user landed
+    referrer = Column(String(500))  # HTTP referrer
+
+    # Request metadata
+    ip_address = Column(String(45))  # IPv4 or IPv6
+    user_agent = Column(Text)
+    device_type = Column(String(50))  # mobile, desktop, tablet
+    browser = Column(String(100))
+    os = Column(String(100))
+    country = Column(String(2))  # ISO country code
+    city = Column(String(100))
+
+    # Engagement metrics
+    clicks = Column(Integer, default=1, nullable=False)
+    time_spent = Column(Integer, default=0)  # seconds on landing page
+
+    # Conversion tracking
+    conversions = Column(Integer, default=0)
+    revenue = Column(Integer, default=0)  # in cents (USD)
+
+    # Timestamps
+    first_click = Column(DateTime, default=datetime.utcnow, nullable=False)
+    last_click = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    # Relationships
+    user = relationship("User")
+    conversion_events = relationship("Conversion", back_populates="traffic_source", cascade="all, delete-orphan")
+
+    def __repr__(self):
+        return f"<TrafficSource(utm_source={self.utm_source}, utm_campaign={self.utm_campaign}, clicks={self.clicks})>"
+
+
+class Conversion(Base):
+    """
+    Conversion tracking (lootbox purchases, subscriptions, etc.)
+    Links back to traffic source to measure ROI.
+    """
+
+    __tablename__ = "conversions"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    traffic_source_id = Column(UUID(as_uuid=True), ForeignKey("traffic_sources.id"), nullable=False, index=True)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True, index=True)
+
+    # Conversion details
+    conversion_type = Column(String(50), nullable=False)  # purchase, signup, deposit
+    customer_id = Column(String(100))  # External customer ID (from lootbox system)
+
+    # Transaction details
+    amount = Column(Integer, nullable=False)  # in cents
+    currency = Column(String(3), default="USD")
+    product_id = Column(String(100))
+    product_name = Column(String(200))
+
+    # Attribution
+    time_to_conversion = Column(Integer)  # seconds from click to conversion
+
+    # Metadata
+    metadata = Column(JSON, default={})
+    """
+    Example metadata:
+    {
+        "lootbox_type": "gold",
+        "payment_method": "stripe",
+        "transaction_id": "txn_123",
+        "coupon_code": "FIRST20"
+    }
+    """
+
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
+
+    # Relationships
+    traffic_source = relationship("TrafficSource", back_populates="conversion_events")
+    user = relationship("User")
+
+    def __repr__(self):
+        return f"<Conversion(type={self.conversion_type}, amount=${self.amount/100:.2f})>"
+
+
+class TikTokVideo(Base):
+    """
+    TikTok videos created and scheduled for posting.
+    Part of the traffic generation funnel.
+    """
+
+    __tablename__ = "tiktok_videos"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True)
+    account_id = Column(UUID(as_uuid=True), ForeignKey("tiktok_accounts.id"), nullable=True)
+
+    # Video info
+    title = Column(String(200))
+    caption = Column(Text)
+    hashtags = Column(ARRAY(String))
+
+    # File paths
+    source_video_path = Column(String(500))  # Original video
+    processed_video_path = Column(String(500))  # Processed/edited video
+    thumbnail_path = Column(String(500))
+
+    # TikTok IDs (after posting)
+    tiktok_video_id = Column(String(100), unique=True, index=True)
+    tiktok_share_url = Column(String(500))
+
+    # UTM tracking (for links in bio/comments)
+    utm_campaign = Column(String(200), index=True)
+    utm_content = Column(String(200))  # video_id
+    tracking_link = Column(String(500))  # Short link with UTM
+
+    # Status
+    status = Column(String(50), nullable=False, default="draft", index=True)
+    # draft, ready, scheduled, publishing, published, failed, deleted
+
+    # Performance metrics (updated via TikTok API)
+    views = Column(BigInteger, default=0)
+    likes = Column(BigInteger, default=0)
+    comments = Column(BigInteger, default=0)
+    shares = Column(BigInteger, default=0)
+    engagement_rate = Column(Integer, default=0)  # percentage * 100
+
+    # Timestamps
+    created_at = Column(DateTime, default=datetime.utcnow)
+    scheduled_at = Column(DateTime, index=True)
+    published_at = Column(DateTime)
+    last_stats_update = Column(DateTime)
+
+    # Relationships
+    user = relationship("User")
+    account = relationship("TikTokAccount", back_populates="videos")
+
+    def __repr__(self):
+        return f"<TikTokVideo(id={self.id}, status={self.status}, views={self.views})>"
+
+
+class TikTokAccount(Base):
+    """
+    TikTok accounts used for posting videos.
+    Supports multi-account strategy.
+    """
+
+    __tablename__ = "tiktok_accounts"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True)
+
+    # Account info
+    username = Column(String(100), nullable=False, unique=True, index=True)
+    display_name = Column(String(100))
+    bio = Column(Text)
+    profile_image_url = Column(String(500))
+
+    # TikTok credentials (encrypted in production!)
+    tiktok_user_id = Column(String(100), unique=True)
+    access_token = Column(Text)  # Should be encrypted!
+    refresh_token = Column(Text)  # Should be encrypted!
+    token_expires_at = Column(DateTime)
+
+    # Account status
+    is_active = Column(Boolean, default=True)
+    is_verified = Column(Boolean, default=False)
+    is_banned = Column(Boolean, default=False)
+
+    # Stats
+    followers_count = Column(BigInteger, default=0)
+    following_count = Column(BigInteger, default=0)
+    total_views = Column(BigInteger, default=0)
+    total_likes = Column(BigInteger, default=0)
+
+    # Posting limits (daily/hourly limits to avoid bans)
+    daily_post_limit = Column(Integer, default=5)
+    posts_today = Column(Integer, default=0)
+    last_post_at = Column(DateTime)
+
+    # Timestamps
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    last_stats_update = Column(DateTime)
+
+    # Relationships
+    user = relationship("User")
+    videos = relationship("TikTokVideo", back_populates="account", cascade="all, delete-orphan")
+
+    def __repr__(self):
+        return f"<TikTokAccount(username={self.username}, followers={self.followers_count})>"
+
+
+class ContentTemplate(Base):
+    """
+    Templates for generating viral TikTok content.
+    Track which templates perform best.
+    """
+
+    __tablename__ = "content_templates"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+
+    # Template info
+    name = Column(String(100), nullable=False)
+    template_type = Column(String(50), nullable=False)  # caption, hashtag_set, hook, cta
+    category = Column(String(50))  # sports, football, basketball, etc.
+
+    # Template content
+    template = Column(Text, nullable=False)
+    """
+    Example templates:
+    - Caption: "{player_name} just did THAT! 🔥 {emoji} #fyp #sports"
+    - Hook: "Wait for the end! 😱"
+    - CTA: "Follow for daily highlights! ⚽"
+    """
+
+    variables = Column(ARRAY(String), default=[])  # [player_name, emoji, team]
+
+    # Performance tracking
+    times_used = Column(Integer, default=0)
+    total_views = Column(BigInteger, default=0)
+    total_engagement = Column(BigInteger, default=0)
+    effectiveness_score = Column(Integer, default=0)  # calculated metric
+
+    # A/B testing
+    is_active = Column(Boolean, default=True)
+    test_group = Column(String(10))  # A, B, C for A/B testing
+
+    # Stats for impressions/clicks (if template includes CTA link)
+    impressions = Column(BigInteger, default=0)
+    clicks = Column(BigInteger, default=0)
+
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    # Relationships
+    user = relationship("User")
+
+    def __repr__(self):
+        return f"<ContentTemplate(name={self.name}, effectiveness={self.effectiveness_score})>"
+
+
+# Additional indexes for TikTok tracking
+Index("idx_traffic_sources_utm_lookup", TrafficSource.utm_source, TrafficSource.utm_campaign, TrafficSource.created_at.desc())
+Index("idx_conversions_created_at_desc", Conversion.created_at.desc())
+Index("idx_tiktok_videos_status_scheduled", TikTokVideo.status, TikTokVideo.scheduled_at)
+Index("idx_tiktok_accounts_active", TikTokAccount.user_id, TikTokAccount.is_active)
