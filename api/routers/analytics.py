@@ -147,6 +147,29 @@ async def get_dashboard(
         for device, clicks in device_stats.items()
     ]
 
+    # Link type breakdown (landing vs direct)
+    link_type_stats = defaultdict(lambda: {"clicks": 0, "conversions": 0, "revenue": 0})
+    for ts in traffic_sources:
+        # Determine link type from referrer field
+        link_type = "landing" if ts.referrer and "landing_link" in ts.referrer else "direct"
+        if ts.referrer and "direct_link" in ts.referrer:
+            link_type = "direct"
+
+        link_type_stats[link_type]["clicks"] += ts.clicks
+        link_type_stats[link_type]["conversions"] += ts.conversions
+        link_type_stats[link_type]["revenue"] += ts.revenue
+
+    link_type_breakdown = [
+        {
+            "link_type": link_type,
+            "clicks": stats["clicks"],
+            "conversions": stats["conversions"],
+            "revenue": stats["revenue"] / 100,
+            "conversion_rate": (stats["conversions"] / stats["clicks"] * 100) if stats["clicks"] > 0 else 0
+        }
+        for link_type, stats in link_type_stats.items()
+    ]
+
     return {
         "success": True,
         "period": {
@@ -171,6 +194,7 @@ async def get_dashboard(
         "top_campaigns": top_campaigns,
         "daily_stats": daily_chart,
         "device_breakdown": device_breakdown,
+        "link_type_breakdown": link_type_breakdown,
     }
 
 

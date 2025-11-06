@@ -27,3 +27,13 @@ requests==2.31.0
 
 # Utilities
 user-agents==2.2.0
+
+# GeoIP (optional - for country/city detection)
+geoip2==4.7.0
+
+# Security
+cryptography==41.0.7
+slowapi==0.1.9
+
+# Additional utilities
+python-dateutil==2.8.2

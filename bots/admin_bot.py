@@ -177,7 +177,42 @@ def process_campaign_name(message):
 
     # Сохранить название кампании
     user_states[user_id]["campaign"] = campaign_name
+    user_states[user_id]["step"] = "link_type"
+
+    # Показать кнопки выбора типа ссылки
+    markup = InlineKeyboardMarkup(row_width=1)
+    markup.add(
+        InlineKeyboardButton("🌐 С Landing Page (для TikTok bio)", callback_data="linktype_landing"),
+        InlineKeyboardButton("📱 Прямая TG ссылка (для репостов)", callback_data="linktype_direct")
+    )
+
+    bot.send_message(
+        message.chat.id,
+        f"✅ Кампания: *{campaign_name}*\n\n"
+        f"Выберите тип ссылки:\n\n"
+        f"🌐 *Landing* - промежуточная страница с редиректом\n"
+        f"   _(для TikTok, Instagram bio)_\n\n"
+        f"📱 *Direct* - прямая ссылка на бота/канал\n"
+        f"   _(для tg-reposter, постов в канале)_",
+        parse_mode="Markdown",
+        reply_markup=markup
+    )
+
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith("linktype_"))
+def handle_link_type_selection(call):
+    """Обработать выбор типа ссылки."""
+    user_id = call.from_user.id
+    link_type = call.data.replace("linktype_", "")
+
+    if user_id not in user_states:
+        bot.answer_callback_query(call.id, "❌ Сессия истекла. Начните с /generate")
+        return
+
+    user_states[user_id]["link_type"] = link_type
     user_states[user_id]["step"] = "source"
+
+    bot.answer_callback_query(call.id)
 
     # Показать кнопки выбора источника
     markup = InlineKeyboardMarkup(row_width=2)
@@ -185,12 +220,16 @@ def process_campaign_name(message):
         InlineKeyboardButton("📱 TikTok", callback_data="source_tiktok"),
         InlineKeyboardButton("📷 Instagram", callback_data="source_instagram"),
         InlineKeyboardButton("▶️ YouTube", callback_data="source_youtube"),
+        InlineKeyboardButton("💬 Telegram", callback_data="source_telegram"),
         InlineKeyboardButton("🌐 Other", callback_data="source_other")
     )
 
+    link_emoji = "🌐" if link_type == "landing" else "📱"
+    link_name = "Landing Page" if link_type == "landing" else "Direct Link"
+
     bot.send_message(
-        message.chat.id,
-        f"✅ Кампания: *{campaign_name}*\n\n"
+        call.message.chat.id,
+        f"✅ Тип ссылки: {link_emoji} *{link_name}*\n\n"
         f"Выберите источник трафика:",
         parse_mode="Markdown",
         reply_markup=markup
@@ -236,14 +275,23 @@ def process_content(message):
     # Генерируем UTM ссылку
     campaign = user_states[user_id]["campaign"]
     source = user_states[user_id]["source"]
+    link_type = user_states[user_id].get("link_type", "landing")
+
+    # Определяем base_url в зависимости от типа ссылки
+    if link_type == "landing":
+        base_url = LANDING_BASE_URL
+    else:
+        # Для direct ссылок используем канал/бота из ENV или дефолт
+        base_url = os.getenv("DEFAULT_TELEGRAM_CHANNEL", "https://t.me/sportschannel")
 
     # API запрос
     result = api_request("POST", "/api/v1/utm/generate", {
-        "base_url": LANDING_BASE_URL,
+        "base_url": base_url,
         "source": source,
         "campaign": campaign,
         "content": content,
-        "medium": "social"
+        "medium": "social",
+        "link_type": link_type
     })
 
     if not result or not result.get("success"):
@@ -256,11 +304,22 @@ def process_content(message):
 
     utm_link = result["utm_link"]
     utm_id = result["utm_id"]
+    link_type = result.get("link_type", "landing")
 
     # Красивый ответ
+    link_emoji = "🌐" if link_type == "landing" else "📱"
+    link_description = "Landing Page" if link_type == "landing" else "Direct Link"
+
+    usage_hint = ""
+    if link_type == "landing":
+        usage_hint = f"📋 Скопируйте ссылку и вставьте в bio {source}!"
+    else:
+        usage_hint = "📋 Используйте эту ссылку в постах или репостах!"
+
     text = f"""
 ✅ *UTM ссылка создана!*
 
+{link_emoji} *Тип:* {link_description}
 🔗 *Ссылка для {source}:*
 `{utm_link}`
 
@@ -269,8 +328,9 @@ def process_content(message):
 • Source: `{source}`
 • Content: `{content or 'не указан'}`
 • UTM ID: `{utm_id}`
+• Type: `{link_type}`
 
-📋 Скопируйте ссылку и вставьте в био {source}!
+{usage_hint}
 """
 
     # Кнопки

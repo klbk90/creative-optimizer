@@ -70,11 +70,14 @@ app = FastAPI(
 )
 
 # CORS configuration
+from utils.security import get_cors_origins, get_security_headers
+
+allowed_origins = get_cors_origins()
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # TODO: Configure properly in production
+    allow_origins=allowed_origins,
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["*"],
 )
 
@@ -82,7 +85,7 @@ app.add_middleware(
 # Logging middleware
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
-    """Log all HTTP requests."""
+    """Log all HTTP requests and add security headers."""
     start_time = time.time()
 
     # Process request
@@ -98,6 +101,11 @@ async def log_requests(request: Request, call_next):
 
     # Add processing time header
     response.headers["X-Process-Time"] = str(process_time)
+
+    # Add security headers
+    security_headers = get_security_headers()
+    for header, value in security_headers.items():
+        response.headers[header] = value
 
     return response
 
