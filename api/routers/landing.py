@@ -353,12 +353,21 @@ async def landing_page(
         logger.warning(f"Landing page accessed with invalid UTM ID: {utm_id}")
         return RedirectResponse("https://t.me/sportschannel")
 
-    # Build Telegram link (you can customize this per user/channel)
-    # In production, store telegram_channel in traffic_source or user settings
-    telegram_link = os.getenv("DEFAULT_TELEGRAM_CHANNEL", "https://t.me/sportschannel")
+    # Build Telegram link with utm_id preserved
+    # Option 1: Direct to bot (recommended - preserves utm_id)
+    # Option 2: To channel (loses utm_id unless you add inline button)
 
-    # Get channel info from config or database
-    # For now, using defaults
+    redirect_type = os.getenv("LANDING_REDIRECT_TYPE", "bot")  # "bot" or "channel"
+
+    if redirect_type == "bot":
+        # Direct to bot with utm_id in /start parameter
+        bot_username = os.getenv("TELEGRAM_BOT_USERNAME", "your_bot")
+        telegram_link = f"https://t.me/{bot_username}?start={utm_id}"
+    else:
+        # To channel (utm_id will be lost unless channel has button to bot)
+        telegram_link = os.getenv("DEFAULT_TELEGRAM_CHANNEL", "https://t.me/sportschannel")
+
+    # Get channel/bot info from config or database
     channel_name = os.getenv("CHANNEL_NAME", "Sports Hub")
     channel_description = os.getenv("CHANNEL_DESCRIPTION", "Daily sports highlights & discussions")
 
