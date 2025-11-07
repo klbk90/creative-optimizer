@@ -773,3 +773,368 @@ def recommend_scaling_creatives(
         )
 
     return recommendations
+
+
+@router.post("/update-from-utm")
+def update_creative_performance_from_utm(
+    creative_id: str = Field(..., description="Creative UUID"),
+    utm_campaign: str = Field(..., description="UTM campaign name to fetch data from"),
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    🔗 Автоматически обновить метрики креатива из UTM данных.
+
+    **Workflow:**
+    1. Создали креатив
+    2. Создали UTM ссылку (utm_content = creative_id)
+    3. Запустили микро-тест
+    4. Вызываем этот endpoint → автоматически подтягивает метрики
+
+    **Example:**
+    ```json
+    {
+      "creative_id": "uuid-123",
+      "utm_campaign": "test_video_1"
+    }
+    ```
+
+    **Система:**
+    - Найдет все traffic_sources с utm_campaign = "test_video_1"
+    - Суммирует clicks, conversions, revenue
+    - Обновит креатив
+    - Пересчитает CVR, ROAS
+    """
+
+    user_id = current_user["user_id"]
+
+    # Найти креатив
+    creative = db.query(Creative).filter(
+        Creative.id == creative_id,
+        Creative.user_id == user_id
+    ).first()
+
+    if not creative:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Creative not found"
+        )
+
+    # Найти все UTM записи для этой кампании
+    traffic_sources = db.query(TrafficSource).filter(
+        TrafficSource.user_id == user_id,
+        TrafficSource.utm_campaign == utm_campaign
+    ).all()
+
+    if not traffic_sources:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"No UTM data found for campaign: {utm_campaign}"
+        )
+
+    # Суммировать метрики
+    total_impressions = len(traffic_sources)  # Каждый клик = просмотр landing page
+    total_clicks = sum(ts.clicks for ts in traffic_sources)
+    total_conversions = sum(ts.conversions for ts in traffic_sources)
+    total_revenue = sum(ts.revenue for ts in traffic_sources)
+
+    # Обновить креатив
+    creative.impressions = total_impressions
+    creative.clicks = total_clicks
+    creative.conversions = total_conversions
+    creative.revenue = total_revenue
+
+    # Рассчитать метрики
+    if total_impressions > 0:
+        creative.ctr = int((total_clicks / total_impressions) * 10000)  # CTR * 10000
+
+    if total_clicks > 0:
+        creative.cvr = int((total_conversions / total_clicks) * 10000)  # CVR * 10000
+
+    if creative.media_spend and creative.media_spend > 0:
+        creative.roas = int((total_revenue / creative.media_spend) * 100)  # ROAS * 100
+        creative.cpa = creative.media_spend // total_conversions if total_conversions > 0 else 0
+
+    # Обновить статус
+    if creative.status == "draft":
+        creative.status = "testing"
+
+    creative.tested_at = datetime.utcnow()
+    creative.last_stats_update = datetime.utcnow()
+
+    db.commit()
+    db.refresh(creative)
+
+    return {
+        "message": "Creative performance updated from UTM data",
+        "creative_id": str(creative.id),
+        "utm_campaign": utm_campaign,
+        "metrics": {
+            "impressions": creative.impressions,
+            "clicks": creative.clicks,
+            "conversions": creative.conversions,
+            "revenue": creative.revenue / 100,  # В долларах
+            "ctr": creative.ctr / 10000,
+            "cvr": creative.cvr / 10000,
+            "roas": creative.roas / 100 if creative.roas else None
+        }
+    }
+
+
+@router.post("/bulk-update-from-utm")
+def bulk_update_creatives_from_utm(
+    utm_campaigns: list[str] = Field(..., description="List of UTM campaigns"),
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    🔗 Массово обновить все креативы из UTM данных.
+
+    **Use case:**
+    После завершения всех микро-тестов (20 креативов):
+
+    ```json
+    {
+      "utm_campaigns": [
+        "test_video_1",
+        "test_video_2",
+        "test_video_3",
+        ...
+        "test_video_20"
+      ]
+    }
+    ```
+
+    Система обновит все 20 креативов одним запросом.
+    """
+
+    user_id = current_user["user_id"]
+    results = []
+    errors = []
+
+    for utm_campaign in utm_campaigns:
+        try:
+            # Найти креатив по utm_campaign
+            # Предполагается что utm_campaign уникален для креатива
+            traffic_sources = db.query(TrafficSource).filter(
+                TrafficSource.user_id == user_id,
+                TrafficSource.utm_campaign == utm_campaign
+            ).all()
+
+            if not traffic_sources:
+                errors.append({
+                    "utm_campaign": utm_campaign,
+                    "error": "No UTM data found"
+                })
+                continue
+
+            # Попробовать найти creative_id из utm_content
+            # (если вы указали creative_id в utm_content при создании UTM)
+            utm_content = traffic_sources[0].utm_content
+
+            creative = db.query(Creative).filter(
+                Creative.user_id == user_id,
+                Creative.id == utm_content  # utm_content содержит creative_id
+            ).first()
+
+            if not creative:
+                # Альтернативно: найти по названию кампании
+                creative = db.query(Creative).filter(
+                    Creative.user_id == user_id,
+                    Creative.name.contains(utm_campaign)
+                ).first()
+
+            if not creative:
+                errors.append({
+                    "utm_campaign": utm_campaign,
+                    "error": "Creative not found"
+                })
+                continue
+
+            # Обновить метрики (аналогично update-from-utm)
+            total_impressions = len(traffic_sources)
+            total_clicks = sum(ts.clicks for ts in traffic_sources)
+            total_conversions = sum(ts.conversions for ts in traffic_sources)
+            total_revenue = sum(ts.revenue for ts in traffic_sources)
+
+            creative.impressions = total_impressions
+            creative.clicks = total_clicks
+            creative.conversions = total_conversions
+            creative.revenue = total_revenue
+
+            if total_impressions > 0:
+                creative.ctr = int((total_clicks / total_impressions) * 10000)
+
+            if total_clicks > 0:
+                creative.cvr = int((total_conversions / total_clicks) * 10000)
+
+            if creative.media_spend and creative.media_spend > 0:
+                creative.roas = int((total_revenue / creative.media_spend) * 100)
+
+            creative.status = "testing"
+            creative.tested_at = datetime.utcnow()
+            creative.last_stats_update = datetime.utcnow()
+
+            results.append({
+                "creative_id": str(creative.id),
+                "utm_campaign": utm_campaign,
+                "cvr": creative.cvr / 10000,
+                "conversions": creative.conversions
+            })
+
+        except Exception as e:
+            errors.append({
+                "utm_campaign": utm_campaign,
+                "error": str(e)
+            })
+
+    db.commit()
+
+    return {
+        "message": f"Updated {len(results)} creatives",
+        "results": results,
+        "errors": errors if errors else None
+    }
+
+
+@router.post("/train-markov-chain")
+def train_markov_chain_model(
+    product_category: str = Field(..., description="Product category to train on"),
+    min_sample_size: int = Field(default=5, description="Minimum creatives required"),
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    🧠 Обучить Markov Chain модель на собранных данных.
+
+    **Когда использовать:**
+    После завершения цикла микро-тестов:
+    1. Загрузили 20 креативов
+    2. Запустили микро-тесты
+    3. Обновили все метрики через `/bulk-update-from-utm`
+    4. Вызываем этот endpoint → обучение модели
+
+    **Что делает:**
+    - Агрегирует performance по паттернам
+    - Обновляет таблицу pattern_performance
+    - Рассчитывает transition probabilities
+    - Модель готова для предсказаний!
+
+    **Example:**
+    ```json
+    {
+      "product_category": "lootbox",
+      "min_sample_size": 5
+    }
+    ```
+    """
+
+    user_id = current_user["user_id"]
+
+    # Получить все креативы с метриками
+    creatives = db.query(Creative).filter(
+        Creative.user_id == user_id,
+        Creative.product_category == product_category,
+        Creative.status.in_(["testing", "active"]),
+        Creative.conversions > 0  # Только с данными
+    ).all()
+
+    if len(creatives) < min_sample_size:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Not enough data. Need at least {min_sample_size} creatives with conversions. Found: {len(creatives)}"
+        )
+
+    # Группировать по паттернам
+    from collections import defaultdict
+
+    pattern_stats = defaultdict(lambda: {
+        "sample_size": 0,
+        "total_impressions": 0,
+        "total_clicks": 0,
+        "total_conversions": 0,
+        "total_revenue": 0
+    })
+
+    for creative in creatives:
+        # Создать ключ паттерна
+        pattern_key = (
+            creative.hook_type or "unknown",
+            creative.emotion or "unknown",
+            creative.pacing or "unknown",
+            creative.cta_type or "unknown"
+        )
+
+        stats = pattern_stats[pattern_key]
+        stats["sample_size"] += 1
+        stats["total_impressions"] += creative.impressions or 0
+        stats["total_clicks"] += creative.clicks or 0
+        stats["total_conversions"] += creative.conversions or 0
+        stats["total_revenue"] += creative.revenue or 0
+
+    # Обновить/создать PatternPerformance записи
+    updated_patterns = []
+
+    for pattern_key, stats in pattern_stats.items():
+        hook_type, emotion, pacing, cta_type = pattern_key
+
+        # Найти или создать
+        pattern_perf = db.query(PatternPerformance).filter(
+            PatternPerformance.user_id == user_id,
+            PatternPerformance.product_category == product_category,
+            PatternPerformance.hook_type == hook_type,
+            PatternPerformance.emotion == emotion,
+            PatternPerformance.pacing == pacing,
+            PatternPerformance.cta_type == cta_type
+        ).first()
+
+        if not pattern_perf:
+            pattern_perf = PatternPerformance(
+                user_id=user_id,
+                product_category=product_category,
+                hook_type=hook_type,
+                emotion=emotion,
+                pacing=pacing,
+                cta_type=cta_type
+            )
+            db.add(pattern_perf)
+
+        # Обновить метрики
+        pattern_perf.sample_size = stats["sample_size"]
+        pattern_perf.total_impressions = stats["total_impressions"]
+        pattern_perf.total_clicks = stats["total_clicks"]
+        pattern_perf.total_conversions = stats["total_conversions"]
+        pattern_perf.total_revenue = stats["total_revenue"]
+
+        # Рассчитать средние
+        if stats["total_clicks"] > 0:
+            avg_ctr = stats["total_clicks"] / stats["total_impressions"] if stats["total_impressions"] > 0 else 0
+            pattern_perf.avg_ctr = int(avg_ctr * 10000)
+
+            avg_cvr = stats["total_conversions"] / stats["total_clicks"]
+            pattern_perf.avg_cvr = int(avg_cvr * 10000)
+
+        # Transition probability (вероятность конверсии при данном паттерне)
+        if stats["total_clicks"] > 0:
+            transition_prob = stats["total_conversions"] / stats["total_clicks"]
+            pattern_perf.transition_probability = int(transition_prob * 10000)
+
+        pattern_perf.updated_at = datetime.utcnow()
+
+        updated_patterns.append({
+            "pattern": f"{hook_type}_{emotion}_{pacing}",
+            "sample_size": stats["sample_size"],
+            "avg_cvr": pattern_perf.avg_cvr / 10000 if pattern_perf.avg_cvr else 0
+        })
+
+    db.commit()
+
+    return {
+        "message": "Markov Chain model trained successfully",
+        "product_category": product_category,
+        "total_creatives": len(creatives),
+        "patterns_learned": len(updated_patterns),
+        "patterns": updated_patterns,
+        "model_ready": True,
+        "next_step": "Use POST /api/v1/creative/analyze to predict new creatives"
+    }
