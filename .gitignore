@@ -37,3 +37,6 @@ alembic/versions/*.pyc
 
 # Docker
 docker-compose.override.yml
+
+# Git bundles
+*.bundle
