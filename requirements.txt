@@ -45,6 +45,8 @@ numpy==1.26.3
 scipy==1.11.4
 anthropic==0.8.1
 scikit-learn==1.3.2  # For clustering (KMeans, DBSCAN, PCA)
+lightgbm==4.1.0  # Gradient Boosting for CVR prediction
+apscheduler==3.10.4  # Background tasks scheduler for auto-training
 
 # CLIP Embeddings (optional - heavy dependencies, uncomment if needed)
 # transformers==4.36.2

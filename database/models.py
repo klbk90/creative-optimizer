@@ -4,7 +4,7 @@ SQLAlchemy models for PostgreSQL database.
 
 import uuid
 from datetime import datetime
-from sqlalchemy import Column, String, Integer, Boolean, DateTime, Text, ForeignKey, ARRAY, JSON, BigInteger
+from sqlalchemy import Column, String, Integer, Boolean, DateTime, Text, ForeignKey, ARRAY, JSON, BigInteger, Index, Float
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 from .base import Base
@@ -714,6 +714,46 @@ class LandingPage(Base):
         return f"<LandingPage(name={self.name}, template={self.template}, views={self.views})>"
 
 
+class ModelMetrics(Base):
+    """
+    Метрики качества ML моделей для отслеживания точности.
+
+    Используется для:
+    - Отслеживание MAE (Mean Absolute Error)
+    - Hit rate (% правильных предсказаний)
+    - R² (correlation coefficient)
+    - Сравнение версий моделей
+    """
+
+    __tablename__ = "model_metrics"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True)
+    product_category = Column(String(100), nullable=False, index=True)
+
+    # Тип модели
+    model_type = Column(String(50), nullable=False)  # markov_chain, gradient_boosting, ensemble
+
+    # Метрики качества (умножены на 10000 для хранения)
+    mae = Column(Integer, nullable=False)  # Mean Absolute Error * 10000
+    hit_rate = Column(Integer, nullable=False)  # Hit rate * 10000 (0.75 = 7500)
+    r_squared = Column(Integer, nullable=True)  # R² * 10000
+
+    # Мета-информация
+    sample_size = Column(Integer, nullable=False)  # Сколько креативов в test set
+    improved = Column(Boolean, default=False)  # Улучшилась ли модель по сравнению с предыдущей
+    metadata = Column(JSON, default={})  # Доп. информация (feature importance, etc)
+
+    # Timestamps
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
+
+    # Relationships
+    user = relationship("User")
+
+    def __repr__(self):
+        return f"<ModelMetrics(type={self.model_type}, mae={self.mae/10000:.3f}, hit_rate={self.hit_rate/10000:.2%})>"
+
+
 # Additional indexes for TikTok tracking
 Index("idx_traffic_sources_utm_lookup", TrafficSource.utm_source, TrafficSource.utm_campaign, TrafficSource.created_at.desc())
 Index("idx_conversions_created_at_desc", Conversion.created_at.desc())
@@ -731,3 +771,7 @@ Index("idx_creative_patterns_type_value", CreativePattern.pattern_type, Creative
 Index("idx_landing_pages_user_status", LandingPage.user_id, LandingPage.status)
 Index("idx_landing_pages_slug", LandingPage.slug)
 Index("idx_landing_pages_domain", LandingPage.custom_domain)
+
+# Model metrics indexes
+Index("idx_model_metrics_user_type", ModelMetrics.user_id, ModelMetrics.model_type, ModelMetrics.created_at.desc())
+Index("idx_model_metrics_product", ModelMetrics.product_category, ModelMetrics.model_type)

@@ -95,6 +95,31 @@ redis_operations = Counter(
     ['operation']  # get, set, delete
 )
 
+# Model Quality Metrics
+model_accuracy = Gauge(
+    'model_accuracy',
+    'Model MAE (Mean Absolute Error)',
+    ['model_type', 'user_id', 'product_category']
+)
+
+model_hit_rate = Gauge(
+    'model_hit_rate',
+    'Model hit rate (% predictions within ±20%)',
+    ['model_type', 'product_category']
+)
+
+model_training_duration = Histogram(
+    'model_training_duration_seconds',
+    'Model training duration',
+    ['model_type', 'product_category']
+)
+
+model_predictions_total = Counter(
+    'model_predictions_total',
+    'Total model predictions made',
+    ['model_type', 'product_category']
+)
+
 
 # ==================== HELPERS ====================
 

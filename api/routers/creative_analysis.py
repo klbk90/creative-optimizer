@@ -1385,3 +1385,269 @@ def bulk_analyze_early_signals(
     db.commit()
 
     return result
+
+
+# ==================== ML MODEL MANAGEMENT ENDPOINTS ====================
+
+@router.post("/models/auto-train")
+async def auto_train_models(
+    product_category: Optional[str] = None,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    🤖 Автоматическое переобучение моделей.
+
+    **Что делает:**
+    - Проверяет новые данные с последнего обучения
+    - Переобучает если ≥3 новых креатива
+    - Оценивает качество модели (MAE, hit rate)
+    - Сохраняет метрики в БД
+
+    **Когда вызывать:**
+    - После batch-update креативов
+    - По расписанию (автоматически каждый час)
+    - Вручную при необходимости
+
+    **Example:**
+    ```
+    POST /api/v1/creative/models/auto-train?product_category=lootbox
+    ```
+    """
+
+    from utils.auto_trainer import AutoTrainer
+
+    user_id = current_user['user_id']
+
+    trainer = AutoTrainer(db, user_id)
+    result = await trainer.check_and_retrain(product_category=product_category)
+
+    return result
+
+
+@router.get("/models/metrics")
+def get_model_metrics(
+    product_category: str,
+    model_type: str = "markov_chain",
+    limit: int = 10,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    📊 Получить метрики качества модели за последнее время.
+
+    **Use case:**
+    - Посмотреть как модель улучшается со временем
+    - Сравнить разные версии модели
+    - Debug если точность падает
+
+    **Example:**
+    ```
+    GET /api/v1/creative/models/metrics?product_category=lootbox&model_type=markov_chain
+    ```
+
+    **Response:**
+    ```json
+    {
+      "metrics": [
+        {
+          "created_at": "2025-01-15T10:30:00Z",
+          "mae": 0.0345,
+          "hit_rate": 0.72,
+          "r_squared": 0.65,
+          "sample_size": 28,
+          "improved": true
+        }
+      ],
+      "current": {
+        "mae": 0.0345,
+        "hit_rate": 0.72,
+        "trend": "improving"
+      }
+    }
+    ```
+    """
+
+    from database.models import ModelMetrics
+
+    user_id = current_user['user_id']
+
+    # Получить последние метрики
+    metrics = db.query(ModelMetrics).filter(
+        ModelMetrics.user_id == user_id,
+        ModelMetrics.product_category == product_category,
+        ModelMetrics.model_type == model_type
+    ).order_by(ModelMetrics.created_at.desc()).limit(limit).all()
+
+    if not metrics:
+        return {
+            "metrics": [],
+            "current": None,
+            "message": "No metrics found. Model not trained yet?"
+        }
+
+    # Текущие метрики (последние)
+    current = metrics[0]
+
+    # Тренд (улучшается ли модель?)
+    if len(metrics) >= 2:
+        prev_mae = metrics[1].mae / 10000
+        curr_mae = current.mae / 10000
+        trend = "improving" if curr_mae < prev_mae else "degrading"
+    else:
+        trend = "unknown"
+
+    return {
+        "metrics": [
+            {
+                "created_at": m.created_at.isoformat(),
+                "mae": m.mae / 10000,
+                "hit_rate": m.hit_rate / 10000,
+                "r_squared": m.r_squared / 10000 if m.r_squared else None,
+                "sample_size": m.sample_size,
+                "improved": m.improved
+            }
+            for m in metrics
+        ],
+        "current": {
+            "mae": current.mae / 10000,
+            "hit_rate": current.hit_rate / 10000,
+            "sample_size": current.sample_size,
+            "trend": trend
+        }
+    }
+
+
+@router.get("/recommend/next-patterns")
+def recommend_next_patterns_to_test(
+    product_category: str = Field(..., description="Product category"),
+    n_patterns: int = 5,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    🎯 Умная рекомендация: какие паттерны тестировать следующими.
+
+    **Алгоритм:** Thompson Sampling
+    - Балансирует exploit (проверенные паттерны) vs explore (новые паттерны)
+    - Учитывает uncertainty (паттерны с малым sample size = высокий explore приоритет)
+
+    **Use case:**
+    После завершения микро-тестов:
+    ```
+    GET /api/v1/creative/recommend/next-patterns?product_category=lootbox&n_patterns=5
+
+    → Система выдаст топ-5 паттернов для следующего раунда
+    → Заказываешь 20 креативов с этими паттернами
+    → Повторяешь цикл
+    ```
+
+    **Example response:**
+    ```json
+    {
+      "recommended_patterns": [
+        {
+          "rank": 1,
+          "hook_type": "wait",
+          "emotion": "excitement",
+          "pacing": "fast",
+          "cta_type": "urgency",
+          "expected_cvr": 0.145,
+          "uncertainty": 0.15,
+          "priority": 0.85,
+          "sample_size": 8,
+          "reasoning": "High CVR (14.5%) + low uncertainty (tested 8 times) - proven winner!"
+        }
+      ]
+    }
+    ```
+    """
+
+    from utils.thompson_sampling import ThompsonSamplingOptimizer
+
+    user_id = current_user['user_id']
+
+    optimizer = ThompsonSamplingOptimizer(db, user_id, product_category)
+    patterns = optimizer.select_next_patterns(n_patterns=n_patterns)
+
+    return {
+        "recommended_patterns": patterns,
+        "algorithm": "thompson_sampling",
+        "next_action": f"Create {n_patterns} creatives with these patterns",
+        "workflow": [
+            "1. Order UGC videos with recommended patterns",
+            "2. Run micro-tests ($10-50 per creative)",
+            "3. Update metrics via /bulk-update-from-utm",
+            "4. Model auto-retrains (or call /models/auto-train)",
+            "5. Repeat: call this endpoint again for next batch"
+        ]
+    }
+
+
+@router.get("/recommend/cross-product")
+def recommend_cross_product_patterns(
+    target_product: str = Field(..., description="Target product category (new product)"),
+    n_patterns: int = 5,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    🔄 Раскатка паттернов на схожие продукты.
+
+    **Use case:**
+    - Протестил 100 креативов для lootbox
+    - Хочу запустить casino (схожий продукт)
+    - Система порекомендует паттерны lootbox с коррекцией на similarity
+
+    **Product similarity:**
+    - lootbox ↔ casino: 80%
+    - lootbox ↔ betting: 60%
+    - casino ↔ betting: 70%
+    - betting ↔ sports: 90%
+
+    **Example:**
+    ```
+    GET /api/v1/creative/recommend/cross-product?target_product=casino&n_patterns=5
+    ```
+
+    **Response:**
+    ```json
+    {
+      "recommended_patterns": [
+        {
+          "hook_type": "wait",
+          "emotion": "excitement",
+          "pacing": "fast",
+          "source_product": "lootbox",
+          "target_product": "casino",
+          "original_cvr": 0.145,
+          "adjusted_cvr": 0.116,
+          "similarity": 0.8,
+          "reasoning": "Proven in lootbox (CVR 14.5%), adjusted for casino similarity (80%)"
+        }
+      ]
+    }
+    ```
+    """
+
+    from utils.thompson_sampling import CrossProductOptimizer
+
+    user_id = current_user['user_id']
+
+    optimizer = CrossProductOptimizer(db, user_id)
+    patterns = optimizer.recommend_cross_product_patterns(
+        target_product=target_product,
+        n_patterns=n_patterns
+    )
+
+    if not patterns:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"No data found for similar products to {target_product}"
+        )
+
+    return {
+        "target_product": target_product,
+        "recommended_patterns": patterns,
+        "next_action": f"Create {n_patterns} creatives for {target_product} with these patterns"
+    }
