@@ -4,7 +4,7 @@ FastAPI main application for TG Reposter SaaS.
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from contextlib import asynccontextmanager
 import time
@@ -175,6 +175,40 @@ app.include_router(landing_builder.router)  # Landing page builder - already has
 # app.include_router(channels.router, prefix="/api/v1/channels", tags=["Channels"])
 # app.include_router(posts.router, prefix="/api/v1/posts", tags=["Posts"])
 # app.include_router(billing.router, prefix="/api/v1/billing", tags=["Billing"])
+
+
+# ==================== PROMETHEUS METRICS ENDPOINT ====================
+
+@app.get("/metrics")
+async def metrics():
+    """
+    Prometheus metrics endpoint.
+
+    Metrics include:
+    - utm_clicks_total - Total clicks
+    - utm_conversions_total - Total conversions
+    - utm_revenue_cents - Revenue in cents
+    - creative_cvr - Creative CVR
+    - api_request_duration_seconds - API latency
+    - cluster_avg_cvr - Cluster performance
+
+    **Usage:**
+    Configure Prometheus to scrape this endpoint:
+    ```yaml
+    scrape_configs:
+      - job_name: 'utm-tracking'
+        static_configs:
+          - targets: ['localhost:8000']
+        metrics_path: '/metrics'
+    ```
+    """
+    from utils.metrics import get_metrics
+    from prometheus_client import CONTENT_TYPE_LATEST
+
+    return Response(
+        content=get_metrics(),
+        media_type=CONTENT_TYPE_LATEST
+    )
 
 
 if __name__ == "__main__":

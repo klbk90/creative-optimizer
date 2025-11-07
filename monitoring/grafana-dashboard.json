@@ -1,0 +1,221 @@
+{
+  "dashboard": {
+    "title": "UTM Tracking & Creative Clustering",
+    "tags": ["utm", "tracking", "creative", "clustering"],
+    "timezone": "browser",
+    "schemaVersion": 16,
+    "version": 0,
+    "refresh": "5s",
+    "panels": [
+      {
+        "id": 1,
+        "title": "Total Clicks (by Campaign)",
+        "type": "graph",
+        "gridPos": {"x": 0, "y": 0, "w": 12, "h": 8},
+        "targets": [
+          {
+            "expr": "sum(rate(utm_clicks_total[5m])) by (utm_campaign)",
+            "legendFormat": "{{utm_campaign}}"
+          }
+        ],
+        "yaxes": [
+          {"label": "Clicks/sec", "format": "short"},
+          {"show": false}
+        ]
+      },
+      {
+        "id": 2,
+        "title": "Total Conversions (by Campaign)",
+        "type": "graph",
+        "gridPos": {"x": 12, "y": 0, "w": 12, "h": 8},
+        "targets": [
+          {
+            "expr": "sum(rate(utm_conversions_total[5m])) by (utm_campaign)",
+            "legendFormat": "{{utm_campaign}}"
+          }
+        ],
+        "yaxes": [
+          {"label": "Conversions/sec", "format": "short"},
+          {"show": false}
+        ]
+      },
+      {
+        "id": 3,
+        "title": "Revenue by Campaign",
+        "type": "graph",
+        "gridPos": {"x": 0, "y": 8, "w": 12, "h": 8},
+        "targets": [
+          {
+            "expr": "sum(utm_revenue_cents) by (utm_campaign) / 100",
+            "legendFormat": "{{utm_campaign}}"
+          }
+        ],
+        "yaxes": [
+          {"label": "Revenue ($)", "format": "currencyUSD"},
+          {"show": false}
+        ]
+      },
+      {
+        "id": 4,
+        "title": "Conversion Rate (CVR) by Campaign",
+        "type": "graph",
+        "gridPos": {"x": 12, "y": 8, "w": 12, "h": 8},
+        "targets": [
+          {
+            "expr": "sum(utm_conversions_total) by (utm_campaign) / sum(utm_clicks_total) by (utm_campaign) * 100",
+            "legendFormat": "{{utm_campaign}} CVR"
+          }
+        ],
+        "yaxes": [
+          {"label": "CVR (%)", "format": "percent"},
+          {"show": false}
+        ]
+      },
+      {
+        "id": 5,
+        "title": "Creative CVR by Cluster",
+        "type": "graph",
+        "gridPos": {"x": 0, "y": 16, "w": 12, "h": 8},
+        "targets": [
+          {
+            "expr": "avg(creative_cvr) by (cluster_id) * 100",
+            "legendFormat": "Cluster {{cluster_id}}"
+          }
+        ],
+        "yaxes": [
+          {"label": "AVG CVR (%)", "format": "percent"},
+          {"show": false}
+        ]
+      },
+      {
+        "id": 6,
+        "title": "Cluster Size",
+        "type": "graph",
+        "gridPos": {"x": 12, "y": 16, "w": 12, "h": 8},
+        "targets": [
+          {
+            "expr": "cluster_size",
+            "legendFormat": "Cluster {{cluster_id}}"
+          }
+        ],
+        "yaxes": [
+          {"label": "Creatives in Cluster", "format": "short"},
+          {"show": false}
+        ]
+      },
+      {
+        "id": 7,
+        "title": "API Latency (p95)",
+        "type": "graph",
+        "gridPos": {"x": 0, "y": 24, "w": 12, "h": 8},
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.95, sum(rate(api_request_duration_seconds_bucket[5m])) by (le, endpoint))",
+            "legendFormat": "{{endpoint}} (p95)"
+          }
+        ],
+        "yaxes": [
+          {"label": "Latency (s)", "format": "s"},
+          {"show": false}
+        ]
+      },
+      {
+        "id": 8,
+        "title": "API Requests/sec",
+        "type": "graph",
+        "gridPos": {"x": 12, "y": 24, "w": 12, "h": 8},
+        "targets": [
+          {
+            "expr": "sum(rate(api_request_total[5m])) by (endpoint)",
+            "legendFormat": "{{endpoint}}"
+          }
+        ],
+        "yaxes": [
+          {"label": "Requests/sec", "format": "short"},
+          {"show": false}
+        ]
+      },
+      {
+        "id": 9,
+        "title": "Top Performing Creatives",
+        "type": "table",
+        "gridPos": {"x": 0, "y": 32, "w": 24, "h": 10},
+        "targets": [
+          {
+            "expr": "topk(10, creative_cvr)",
+            "format": "table",
+            "instant": true
+          }
+        ],
+        "transformations": [
+          {
+            "id": "organize",
+            "options": {
+              "excludeByName": {},
+              "indexByName": {},
+              "renameByName": {
+                "creative_id": "Creative ID",
+                "creative_name": "Name",
+                "cluster_id": "Cluster",
+                "Value": "CVR"
+              }
+            }
+          }
+        ]
+      },
+      {
+        "id": 10,
+        "title": "Total Revenue (Today)",
+        "type": "singlestat",
+        "gridPos": {"x": 0, "y": 42, "w": 6, "h": 4},
+        "targets": [
+          {
+            "expr": "sum(utm_revenue_cents) / 100"
+          }
+        ],
+        "format": "currencyUSD",
+        "valueName": "current"
+      },
+      {
+        "id": 11,
+        "title": "Total Conversions (Today)",
+        "type": "singlestat",
+        "gridPos": {"x": 6, "y": 42, "w": 6, "h": 4},
+        "targets": [
+          {
+            "expr": "sum(utm_conversions_total)"
+          }
+        ],
+        "format": "short",
+        "valueName": "current"
+      },
+      {
+        "id": 12,
+        "title": "Total Clicks (Today)",
+        "type": "singlestat",
+        "gridPos": {"x": 12, "y": 42, "w": 6, "h": 4},
+        "targets": [
+          {
+            "expr": "sum(utm_clicks_total)"
+          }
+        ],
+        "format": "short",
+        "valueName": "current"
+      },
+      {
+        "id": 13,
+        "title": "Overall CVR",
+        "type": "singlestat",
+        "gridPos": {"x": 18, "y": 42, "w": 6, "h": 4},
+        "targets": [
+          {
+            "expr": "sum(utm_conversions_total) / sum(utm_clicks_total) * 100"
+          }
+        ],
+        "format": "percent",
+        "valueName": "current"
+      }
+    ]
+  },
+  "overwrite": true
+}

@@ -597,3 +597,179 @@ def find_similar_creatives(
             for c in similar
         ]
     }
+
+
+# ==================== CLUSTERING ENDPOINTS ====================
+
+@router.post("/cluster/visual")
+def cluster_creatives_visual(
+    n_clusters: int = 5,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Кластеризация креативов по визуальному сходству (CLIP embeddings).
+
+    **Use case:**
+    - Группировать похожие креативы
+    - Найти выстреливающие кластеры
+    - Понять какой визуальный стиль работает
+
+    **Example response:**
+    ```json
+    {
+      "clusters": [
+        {
+          "cluster_id": 0,
+          "size": 15,
+          "avg_cvr": 0.125,
+          "avg_roas": 3.5,
+          "top_creative_ids": [...],
+          "common_patterns": {
+            "hook_type": "wait",
+            "emotion": "excitement"
+          }
+        }
+      ],
+      "silhouette_score": 0.65
+    }
+    ```
+    """
+
+    from utils.creative_clustering import CreativeClustering
+
+    user_id = current_user["user_id"]
+
+    clustering = CreativeClustering(db, user_id)
+    result = clustering.cluster_by_visual_similarity(n_clusters=n_clusters)
+
+    return result
+
+
+@router.post("/cluster/patterns")
+def cluster_creatives_patterns(
+    n_clusters: int = 5,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Кластеризация креативов по паттернам (hook, emotion, pacing).
+
+    **Быстрее чем visual clustering, не требует CLIP embeddings.**
+    """
+
+    from utils.creative_clustering import CreativeClustering
+
+    user_id = current_user["user_id"]
+
+    clustering = CreativeClustering(db, user_id)
+    result = clustering.cluster_by_patterns(n_clusters=n_clusters)
+
+    return result
+
+
+@router.get("/cluster/winning")
+def get_winning_cluster(
+    min_cvr: float = 0.10,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Найти выстреливающий кластер (CVR > threshold).
+
+    **Use case:**
+    - Определить лучший кластер для масштабирования
+    - Понять какие паттерны работают
+
+    **Example:**
+    ```
+    GET /api/v1/creative/cluster/winning?min_cvr=0.10
+
+    Returns cluster with AVG CVR > 10%
+    ```
+    """
+
+    from utils.creative_clustering import CreativeClustering
+
+    user_id = current_user["user_id"]
+
+    clustering = CreativeClustering(db, user_id)
+    winning = clustering.find_winning_cluster(min_cvr=min_cvr)
+
+    if not winning:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"No cluster found with CVR > {min_cvr*100}%"
+        )
+
+    return winning
+
+
+@router.post("/recommend/scaling")
+def recommend_scaling_creatives(
+    budget: int = Field(..., description="Budget in cents (e.g., $50 = 5000)"),
+    min_cvr: float = Field(default=0.10, description="Minimum CVR threshold"),
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    🚀 ГЛАВНАЯ ФИЧА: Рекомендовать креативы для масштабирования.
+
+    **Workflow:**
+    1. Микро-тесты на 20 креативов (по $50)
+    2. Анализ результатов + кластеризация
+    3. Вызов этого endpoint: `/recommend/scaling`
+    4. Получить топ креативы для масштабирования
+    5. Залить на них $5k-50k
+
+    **Example request:**
+    ```json
+    {
+      "budget": 500000,  // $5,000
+      "min_cvr": 0.10    // Минимум 10% CVR
+    }
+    ```
+
+    **Example response:**
+    ```json
+    {
+      "recommended_creatives": [
+        {
+          "id": "uuid",
+          "name": "Video 1",
+          "cvr": 0.15,
+          "roas": 4.2,
+          "recommended_budget": 100000,  // $1,000
+          "expected_conversions": 150
+        }
+      ],
+      "cluster_info": {
+        "cluster_id": 0,
+        "avg_cvr": 0.145,
+        "avg_roas": 3.8
+      },
+      "total_budget": 500000,
+      "expected_revenue": 2100000,  // $21,000
+      "expected_roi": 4.2,
+      "confidence": 0.85
+    }
+    ```
+    """
+
+    from utils.creative_clustering import CreativeClustering
+
+    user_id = current_user["user_id"]
+
+    clustering = CreativeClustering(db, user_id)
+    recommendations = clustering.recommend_scaling_creatives(
+        budget=budget,
+        min_cvr=min_cvr
+    )
+
+    if "error" in recommendations:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=recommendations["error"]
+        )
+
+    return recommendations
