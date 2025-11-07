@@ -21,9 +21,11 @@ from database.schemas import (
     ConversionCreate,
     ConversionResponse,
     TrafficSourceResponse,
+    WebhookConversion,
 )
 from api.dependencies import get_current_user
 from utils.logger import setup_logger
+from utils.geoip import get_location_from_ip
 
 logger = setup_logger(__name__)
 router = APIRouter()
@@ -105,6 +107,10 @@ async def generate_utm_link(
     """
     Generate UTM tracking link.
 
+    Supports two link types:
+    1. 'landing' - Short link to landing page (yourdomain.com/l/{utm_id})
+    2. 'direct' - Direct Telegram link with UTM parameters (t.me/bot?start={utm_id})
+
     Example:
     ```
     POST /api/v1/utm/generate
@@ -112,7 +118,8 @@ async def generate_utm_link(
         "base_url": "https://t.me/sportschannel",
         "source": "tiktok",
         "campaign": "football_jan_2025",
-        "content": "video_123"
+        "content": "video_123",
+        "link_type": "landing"
     }
     ```
 
@@ -120,32 +127,48 @@ async def generate_utm_link(
     ```
     {
         "success": true,
-        "utm_link": "https://t.me/sportschannel?utm_source=tiktok&utm_campaign=football_jan_2025&utm_id=tiktok_a7b3c_8f2e1",
-        "utm_id": "tiktok_a7b3c_8f2e1"
+        "utm_link": "https://yourdomain.com/l/tiktok_a7b3c_8f2e1",
+        "utm_id": "tiktok_a7b3c_8f2e1",
+        "link_type": "landing"
     }
     ```
     """
     # Generate unique UTM ID
     utm_id = generate_utm_id(request.source, request.campaign, request.content)
 
-    # Build UTM parameters
-    utm_params = [
-        f"utm_source={request.source}",
-        f"utm_medium={request.medium}",
-    ]
+    # Determine link type and generate appropriate URL
+    if request.link_type == "landing":
+        # Landing page link (will redirect to base_url after tracking)
+        import os
+        landing_base_url = os.getenv("LANDING_BASE_URL", "http://localhost:8000/api/v1/landing/l")
+        utm_link = f"{landing_base_url}/{utm_id}"
 
-    if request.campaign:
-        utm_params.append(f"utm_campaign={request.campaign}")
-    if request.content:
-        utm_params.append(f"utm_content={request.content}")
-    if request.term:
-        utm_params.append(f"utm_term={request.term}")
+    elif request.link_type == "direct":
+        # Direct Telegram link with /start parameter
+        # For bots: t.me/your_bot?start={utm_id}
+        # For channels with description: base_url with utm params
+        if "t.me" in request.base_url and "@" not in request.base_url:
+            # It's a bot link
+            separator = "?start=" if "/start" not in request.base_url else "&start="
+            utm_link = f"{request.base_url.split('?')[0]}{separator}{utm_id}"
+        else:
+            # Regular URL with UTM parameters
+            utm_params = [
+                f"utm_source={request.source}",
+                f"utm_medium={request.medium}",
+            ]
+            if request.campaign:
+                utm_params.append(f"utm_campaign={request.campaign}")
+            if request.content:
+                utm_params.append(f"utm_content={request.content}")
+            if request.term:
+                utm_params.append(f"utm_term={request.term}")
+            utm_params.append(f"utm_id={utm_id}")
 
-    utm_params.append(f"utm_id={utm_id}")
-
-    # Build final URL
-    separator = "&" if "?" in request.base_url else "?"
-    utm_link = f"{request.base_url}{separator}{'&'.join(utm_params)}"
+            separator = "&" if "?" in request.base_url else "?"
+            utm_link = f"{request.base_url}{separator}{'&'.join(utm_params)}"
+    else:
+        raise HTTPException(status_code=400, detail=f"Invalid link_type: {request.link_type}. Use 'landing' or 'direct'")
 
     # Create traffic source record (pre-create for this utm_id)
     traffic_source = TrafficSource(
@@ -157,17 +180,20 @@ async def generate_utm_link(
         utm_term=request.term,
         utm_id=utm_id,
         clicks=0,  # Will be incremented on first click
+        landing_page=request.base_url if request.link_type == "landing" else None,
+        referrer=f"{request.link_type}_link",  # Track link type
     )
 
     db.add(traffic_source)
     db.commit()
 
-    logger.info(f"Generated UTM link: {utm_id} for user {current_user.email}")
+    logger.info(f"Generated {request.link_type} UTM link: {utm_id} for user {current_user.email}")
 
     return UTMGenerateResponse(
         success=True,
         utm_link=utm_link,
         utm_id=utm_id,
+        link_type=request.link_type,
     )
 
 
@@ -223,6 +249,12 @@ async def track_click(
         traffic_source.device_type = ua_info["device_type"]
         traffic_source.browser = ua_info["browser"]
         traffic_source.os = ua_info["os"]
+
+        # GeoIP lookup for country and city
+        country, city = get_location_from_ip(ip_address)
+        if country:
+            traffic_source.country = country
+            traffic_source.city = city
 
     if request.landing_page:
         traffic_source.landing_page = request.landing_page
@@ -394,3 +426,82 @@ async def list_conversions(
     conversions = query.order_by(Conversion.created_at.desc()).offset(skip).limit(limit).all()
 
     return conversions
+
+
+@router.post("/webhook/conversion", response_model=ConversionResponse)
+async def webhook_track_conversion(
+    request: WebhookConversion,
+    db: Session = Depends(get_db),
+):
+    """
+    Webhook endpoint for tracking conversions from external systems.
+
+    This endpoint is designed for easy integration with User Bots.
+    No authentication required - uses utm_id to find traffic source.
+
+    Example from Telegram Bot:
+    ```python
+    import requests
+
+    # When user makes purchase
+    requests.post("https://your-api.com/api/v1/utm/webhook/conversion", json={
+        "utm_id": "tiktok_a7b3c_8f2e1",  # from /start parameter
+        "customer_id": f"telegram_{user_id}",
+        "amount": 5000,  # $50.00
+        "product_name": "Gold Lootbox"
+    })
+    ```
+    """
+    # Find traffic source by utm_id
+    traffic_source = db.query(TrafficSource).filter(
+        TrafficSource.utm_id == request.utm_id
+    ).first()
+
+    if not traffic_source:
+        raise HTTPException(status_code=404, detail=f"UTM ID not found: {request.utm_id}")
+
+    # Calculate time to conversion
+    time_to_conversion = int((datetime.utcnow() - traffic_source.first_click).total_seconds())
+
+    # Create conversion record
+    conversion = Conversion(
+        traffic_source_id=traffic_source.id,
+        user_id=traffic_source.user_id,
+        conversion_type=request.conversion_type,
+        customer_id=request.customer_id,
+        amount=request.amount,
+        currency=request.currency,
+        product_id=request.product_id,
+        product_name=request.product_name,
+        time_to_conversion=time_to_conversion,
+        metadata=request.metadata or {},
+    )
+
+    db.add(conversion)
+
+    # Update traffic source conversion stats
+    traffic_source.conversions += 1
+    traffic_source.revenue += request.amount
+
+    db.commit()
+    db.refresh(conversion)
+
+    logger.info(
+        f"Webhook conversion tracked: {request.conversion_type} "
+        f"${request.amount/100:.2f} for {request.utm_id} (customer: {request.customer_id})"
+    )
+
+    return ConversionResponse(
+        id=conversion.id,
+        traffic_source_id=conversion.traffic_source_id,
+        user_id=conversion.user_id,
+        conversion_type=conversion.conversion_type,
+        customer_id=conversion.customer_id,
+        amount=conversion.amount,
+        currency=conversion.currency,
+        product_id=conversion.product_id,
+        product_name=conversion.product_name,
+        time_to_conversion=conversion.time_to_conversion,
+        metadata=conversion.metadata,
+        created_at=conversion.created_at,
+    )

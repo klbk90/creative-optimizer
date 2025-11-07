@@ -455,8 +455,200 @@ class ContentTemplate(Base):
         return f"<ContentTemplate(name={self.name}, effectiveness={self.effectiveness_score})>"
 
 
+class Creative(Base):
+    """
+    Video creatives (UGC, micro-influencer content, ads).
+    Stores metadata and performance for Markov Chain analysis.
+    """
+
+    __tablename__ = "creatives"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True)
+    traffic_source_id = Column(UUID(as_uuid=True), ForeignKey("traffic_sources.id"), nullable=True)
+
+    # Creative info
+    name = Column(String(200), nullable=False)
+    creative_type = Column(String(50), nullable=False)  # ugc, micro_influencer, studio, spark_ad
+    source_platform = Column(String(50))  # tiktok, instagram, youtube
+    video_url = Column(String(500))
+    thumbnail_url = Column(String(500))
+
+    # Creative metadata
+    duration_seconds = Column(Integer)  # video length
+    aspect_ratio = Column(String(10))  # 9:16, 16:9, 1:1
+
+    # Cost tracking
+    production_cost = Column(Integer, default=0)  # in cents
+    media_spend = Column(Integer, default=0)  # ad spend in cents
+
+    # Testing info
+    test_phase = Column(String(50))  # micro_test, ugc_test, small_ads, scale
+    product_category = Column(String(100))  # lootbox, sports_betting, gambling, etc.
+
+    # CLIP embeddings for similarity analysis (stored as JSON array)
+    clip_embedding = Column(JSON)  # 512-dimensional CLIP vector
+
+    # Extracted patterns (populated by creative_analyzer.py)
+    hook_type = Column(String(50))  # wait, question, bold_claim, curiosity, urgency
+    emotion = Column(String(50))  # excitement, fear, curiosity, greed, fomo
+    pacing = Column(String(50))  # fast, medium, slow
+    cta_type = Column(String(50))  # direct, soft, urgency, scarcity
+    has_text_overlay = Column(Boolean, default=False)
+    has_voiceover = Column(Boolean, default=False)
+
+    # AI-extracted features (from GPT-4V analysis)
+    features = Column(JSON, default={})
+    """
+    Example features:
+    {
+        "has_face": true,
+        "num_scenes": 3,
+        "color_palette": ["#FF0000", "#00FF00"],
+        "text_overlay_count": 2,
+        "dominant_colors": ["red", "gold"],
+        "visual_complexity": "high",
+        "audio_energy": "high"
+    }
+    """
+
+    # Performance metrics
+    impressions = Column(BigInteger, default=0)
+    clicks = Column(BigInteger, default=0)
+    conversions = Column(Integer, default=0)
+    revenue = Column(Integer, default=0)  # in cents
+
+    # Calculated metrics
+    ctr = Column(Integer, default=0)  # CTR * 10000 (e.g., 250 = 2.50%)
+    cvr = Column(Integer, default=0)  # CVR * 10000 (e.g., 1500 = 15.00%)
+    roas = Column(Integer, default=0)  # ROAS * 100 (e.g., 350 = 3.5x)
+    cpa = Column(Integer, default=0)  # Cost per acquisition in cents
+
+    # Markov Chain predictions (before launch)
+    predicted_cvr = Column(Integer)  # Predicted CVR * 10000
+    predicted_roas = Column(Integer)  # Predicted ROAS * 100
+    confidence_score = Column(Integer)  # Prediction confidence * 100
+
+    # Status
+    status = Column(String(50), default="draft")  # draft, testing, active, paused, archived
+    is_winner = Column(Boolean, default=False)  # Marked as winning creative
+
+    # Timestamps
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+    tested_at = Column(DateTime)  # When testing started
+    last_stats_update = Column(DateTime)
+
+    # Relationships
+    user = relationship("User")
+    traffic_source = relationship("TrafficSource")
+    patterns = relationship("CreativePattern", back_populates="creative", cascade="all, delete-orphan")
+
+    def __repr__(self):
+        return f"<Creative(name={self.name}, type={self.creative_type}, cvr={self.cvr/100:.2f}%)>"
+
+
+class CreativePattern(Base):
+    """
+    Extracted patterns from creatives.
+    One creative can have multiple patterns (e.g., hook at 0s, emotion at 2s, CTA at 8s).
+    """
+
+    __tablename__ = "creative_patterns"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    creative_id = Column(UUID(as_uuid=True), ForeignKey("creatives.id"), nullable=False, index=True)
+
+    # Pattern details
+    pattern_type = Column(String(50), nullable=False, index=True)  # hook, emotion, pacing, cta, visual
+    pattern_value = Column(String(100), nullable=False, index=True)  # specific pattern (e.g., "wait", "excitement")
+
+    # Timing (when in video this pattern appears)
+    start_time = Column(Integer)  # seconds from start
+    end_time = Column(Integer)
+
+    # Confidence from AI analysis
+    confidence = Column(Integer, default=100)  # confidence * 100 (e.g., 8500 = 85%)
+
+    # Additional metadata
+    metadata = Column(JSON, default={})
+    """
+    Example metadata:
+    {
+        "text": "Wait for it...",
+        "screen_position": "top",
+        "font_size": "large",
+        "color": "#FFFFFF"
+    }
+    """
+
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    # Relationships
+    creative = relationship("Creative", back_populates="patterns")
+
+    def __repr__(self):
+        return f"<CreativePattern(type={self.pattern_type}, value={self.pattern_value})>"
+
+
+class PatternPerformance(Base):
+    """
+    Aggregated performance by pattern combinations.
+    This is what the Markov Chain uses to predict new creatives.
+    """
+
+    __tablename__ = "pattern_performance"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True)
+
+    # Pattern combination (can be single or multi-pattern)
+    hook_type = Column(String(50), index=True)
+    emotion = Column(String(50), index=True)
+    pacing = Column(String(50), index=True)
+    cta_type = Column(String(50))
+
+    # Product category (patterns perform differently by product)
+    product_category = Column(String(100), index=True)
+
+    # Aggregated metrics from all creatives with this pattern combo
+    sample_size = Column(Integer, default=0)  # how many creatives tested
+    total_impressions = Column(BigInteger, default=0)
+    total_clicks = Column(BigInteger, default=0)
+    total_conversions = Column(Integer, default=0)
+    total_revenue = Column(Integer, default=0)
+
+    # Average metrics
+    avg_ctr = Column(Integer, default=0)  # Average CTR * 10000
+    avg_cvr = Column(Integer, default=0)  # Average CVR * 10000
+    avg_roas = Column(Integer, default=0)  # Average ROAS * 100
+
+    # Statistical confidence
+    confidence_interval_lower = Column(Integer)  # Lower bound of CVR confidence interval
+    confidence_interval_upper = Column(Integer)  # Upper bound
+
+    # Markov Chain probability
+    transition_probability = Column(Integer)  # P(conversion | pattern) * 10000
+
+    # Last updated (recalculated periodically)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    # Relationships
+    user = relationship("User")
+
+    def __repr__(self):
+        return f"<PatternPerformance(hook={self.hook_type}, emotion={self.emotion}, cvr={self.avg_cvr/100:.2f}%)>"
+
+
 # Additional indexes for TikTok tracking
 Index("idx_traffic_sources_utm_lookup", TrafficSource.utm_source, TrafficSource.utm_campaign, TrafficSource.created_at.desc())
 Index("idx_conversions_created_at_desc", Conversion.created_at.desc())
 Index("idx_tiktok_videos_status_scheduled", TikTokVideo.status, TikTokVideo.scheduled_at)
 Index("idx_tiktok_accounts_active", TikTokAccount.user_id, TikTokAccount.is_active)
+
+# Creative analysis indexes
+Index("idx_creatives_user_status", Creative.user_id, Creative.status)
+Index("idx_creatives_product_category", Creative.product_category, Creative.cvr.desc())
+Index("idx_creatives_performance", Creative.user_id, Creative.cvr.desc(), Creative.conversions.desc())
+Index("idx_pattern_performance_lookup", PatternPerformance.user_id, PatternPerformance.product_category, PatternPerformance.hook_type, PatternPerformance.emotion)
+Index("idx_creative_patterns_type_value", CreativePattern.pattern_type, CreativePattern.pattern_value)

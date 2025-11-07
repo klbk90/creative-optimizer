@@ -464,6 +464,7 @@ class UTMGenerateRequest(BaseModel):
     campaign: Optional[str] = Field(None, example="football_jan_2025")
     content: Optional[str] = Field(None, example="video_123")
     term: Optional[str] = Field(None, example="evening_post")
+    link_type: str = Field(default="landing", example="landing", description="Link type: 'landing' or 'direct'")
 
 
 class UTMGenerateResponse(BaseModel):
@@ -471,6 +472,7 @@ class UTMGenerateResponse(BaseModel):
     success: bool
     utm_link: str
     utm_id: str
+    link_type: str = "landing"
     short_link: Optional[str] = None
 
 
@@ -479,6 +481,7 @@ class TrackClickRequest(BaseModel):
     utm_id: str
     landing_page: Optional[str] = None
     referrer: Optional[str] = None
+    user_id: Optional[int] = Field(None, description="Telegram user ID for direct links")
 
 
 class TrackClickResponse(BaseModel):
@@ -511,3 +514,52 @@ class CampaignPerformance(BaseModel):
     total_conversions: int
     total_revenue: float
     roi: float  # Return on Investment
+
+
+# ============================================================================
+# Landing Page Schemas
+# ============================================================================
+
+class LandingPageCreate(BaseModel):
+    """Request to create custom landing page."""
+    utm_id: str
+    title: Optional[str] = None
+    description: Optional[str] = None
+    image_url: Optional[str] = None
+    redirect_url: str
+    redirect_delay: int = Field(default=3, description="Seconds before redirect")
+
+
+class TrackTimeRequest(BaseModel):
+    """Request to track time spent on landing page."""
+    utm_id: str
+    time_spent: int = Field(..., description="Time in seconds")
+
+
+# ============================================================================
+# Webhook Schemas (for external integrations)
+# ============================================================================
+
+class WebhookConversion(BaseModel):
+    """Webhook payload for conversion tracking from external systems."""
+    utm_id: str = Field(..., description="UTM ID from /start parameter")
+    customer_id: str = Field(..., description="Customer/User ID")
+    conversion_type: str = Field(default="purchase")
+    amount: int = Field(..., description="Amount in cents")
+    currency: str = Field(default="USD")
+    product_id: Optional[str] = None
+    product_name: Optional[str] = None
+    metadata: Optional[Dict[str, Any]] = None
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "utm_id": "tiktok_a7b3c_8f2e1",
+                "customer_id": "telegram_user_123456",
+                "conversion_type": "purchase",
+                "amount": 5000,
+                "currency": "USD",
+                "product_id": "lootbox_gold",
+                "product_name": "Gold Lootbox"
+            }
+        }

@@ -14,7 +14,7 @@ from queue import get_queue
 from utils.logger import setup_logger
 
 # Import routers
-from api.routers import auth, utm, analytics, landing
+from api.routers import auth, utm, analytics, landing, creative_analysis
 # from api.routers import channels, posts, billing
 
 logger = setup_logger(__name__)
@@ -70,11 +70,14 @@ app = FastAPI(
 )
 
 # CORS configuration
+from utils.security import get_cors_origins, get_security_headers
+
+allowed_origins = get_cors_origins()
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # TODO: Configure properly in production
+    allow_origins=allowed_origins,
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["*"],
 )
 
@@ -82,7 +85,7 @@ app.add_middleware(
 # Logging middleware
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
-    """Log all HTTP requests."""
+    """Log all HTTP requests and add security headers."""
     start_time = time.time()
 
     # Process request
@@ -98,6 +101,11 @@ async def log_requests(request: Request, call_next):
 
     # Add processing time header
     response.headers["X-Process-Time"] = str(process_time)
+
+    # Add security headers
+    security_headers = get_security_headers()
+    for header, value in security_headers.items():
+        response.headers[header] = value
 
     return response
 
@@ -158,6 +166,7 @@ app.include_router(auth.router, prefix="/api/v1/auth", tags=["Authentication"])
 app.include_router(utm.router, prefix="/api/v1/utm", tags=["UTM Tracking"])
 app.include_router(analytics.router, prefix="/api/v1/analytics", tags=["Analytics"])
 app.include_router(landing.router, prefix="/api/v1/landing", tags=["Landing Pages"])
+app.include_router(creative_analysis.router)  # Already has prefix in router definition
 # app.include_router(channels.router, prefix="/api/v1/channels", tags=["Channels"])
 # app.include_router(posts.router, prefix="/api/v1/posts", tags=["Posts"])
 # app.include_router(billing.router, prefix="/api/v1/billing", tags=["Billing"])
