@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="robots" content="noindex, nofollow">
+    <title>{{ config.get('title', 'Win Amazing Prizes!') }}</title>
+
+    <!-- Styles -->
+    <link rel="stylesheet" href="/static/landings/css/styles.css">
+
+    <!-- Favicon -->
+    {% if config.get('favicon') %}
+    <link rel="icon" href="{{ config.favicon }}" type="image/png">
+    {% endif %}
+
+    <!-- Custom Colors -->
+    <style>
+        {% if config.get('bg_color') %}
+        .theme-lootbox {
+            background: {{ config.bg_color }} !important;
+        }
+        {% endif %}
+
+        {% if config.get('text_color') %}
+        .theme-lootbox {
+            color: {{ config.text_color }} !important;
+        }
+        {% endif %}
+
+        {% if config.get('custom_css') %}
+        {{ config.custom_css | safe }}
+        {% endif %}
+    </style>
+</head>
+<body class="landing-container theme-lootbox">
+
+    <!-- Particles Background -->
+    <div class="particles"></div>
+
+    <!-- Main Content -->
+    <div class="content">
+
+        <!-- Logo -->
+        {% if config.get('logo_url') %}
+        <img src="{{ config.logo_url }}" alt="Logo" class="logo">
+        {% endif %}
+
+        <!-- Headline -->
+        <h1 class="headline">
+            {{ config.get('headline', '🎁 Win $500 from a $5 Lootbox!') }}
+        </h1>
+
+        <!-- Subheadline -->
+        {% if config.get('subheadline') %}
+        <p class="subheadline">
+            {{ config.subheadline }}
+        </p>
+        {% endif %}
+
+        <!-- Animation -->
+        <div class="animation-wrapper">
+            <div class="lootbox">{{ config.get('emoji', '🎁') }}</div>
+        </div>
+
+        <!-- Description -->
+        {% if config.get('description') %}
+        <p class="description">
+            {{ config.description }}
+        </p>
+        {% endif %}
+
+        <!-- Redirect Message -->
+        <div class="redirect-message">
+            {{ config.get('redirect_message', 'Opening Telegram in') }}
+            <span class="redirect-timer">{{ redirect_delay }}</span>
+            {{ config.get('redirect_message_suffix', 'seconds...') }}
+        </div>
+
+        <!-- Progress Bar -->
+        <div class="progress-container">
+            <div class="progress-bar"></div>
+        </div>
+
+    </div>
+
+    <!-- Configuration -->
+    <script>
+        window.landingConfig = {
+            utm_id: '{{ utm_id }}',
+            redirect_url: '{{ redirect_url }}',
+            redirect_delay: {{ redirect_delay }}
+        };
+    </script>
+
+    <!-- Redirect Script -->
+    <script src="/static/landings/js/redirect.js"></script>
+
+    <!-- Custom JavaScript -->
+    {% if config.get('custom_js') %}
+    <script>
+        {{ config.custom_js | safe }}
+    </script>
+    {% endif %}
+
+</body>
+</html>

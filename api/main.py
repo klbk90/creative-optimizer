@@ -5,6 +5,7 @@ FastAPI main application for TG Reposter SaaS.
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
 from contextlib import asynccontextmanager
 import time
 
@@ -14,7 +15,7 @@ from queue import get_queue
 from utils.logger import setup_logger
 
 # Import routers
-from api.routers import auth, utm, analytics, landing, creative_analysis
+from api.routers import auth, utm, analytics, landing, creative_analysis, landing_builder
 # from api.routers import channels, posts, billing
 
 logger = setup_logger(__name__)
@@ -161,12 +162,16 @@ async def root():
     }
 
 
+# Mount static files (for landing pages)
+app.mount("/static", StaticFiles(directory="static"), name="static")
+
 # Include routers
 app.include_router(auth.router, prefix="/api/v1/auth", tags=["Authentication"])
 app.include_router(utm.router, prefix="/api/v1/utm", tags=["UTM Tracking"])
 app.include_router(analytics.router, prefix="/api/v1/analytics", tags=["Analytics"])
 app.include_router(landing.router, prefix="/api/v1/landing", tags=["Landing Pages"])
 app.include_router(creative_analysis.router)  # Already has prefix in router definition
+app.include_router(landing_builder.router)  # Landing page builder - already has prefix
 # app.include_router(channels.router, prefix="/api/v1/channels", tags=["Channels"])
 # app.include_router(posts.router, prefix="/api/v1/posts", tags=["Posts"])
 # app.include_router(billing.router, prefix="/api/v1/billing", tags=["Billing"])

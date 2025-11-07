@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="robots" content="noindex, nofollow">
+    <title>{{ config.get('title', 'Jackpot Winner!') }}</title>
+
+    <link rel="stylesheet" href="/static/landings/css/styles.css">
+
+    {% if config.get('favicon') %}
+    <link rel="icon" href="{{ config.favicon }}" type="image/png">
+    {% endif %}
+
+    <style>
+        {% if config.get('bg_color') %}
+        .theme-casino {
+            background: {{ config.bg_color }} !important;
+        }
+        {% endif %}
+
+        {% if config.get('text_color') %}
+        .theme-casino {
+            color: {{ config.text_color }} !important;
+        }
+        {% endif %}
+
+        {% if config.get('custom_css') %}
+        {{ config.custom_css | safe }}
+        {% endif %}
+    </style>
+</head>
+<body class="landing-container theme-casino">
+
+    <div class="particles"></div>
+
+    <div class="content">
+
+        {% if config.get('logo_url') %}
+        <img src="{{ config.logo_url }}" alt="Logo" class="logo">
+        {% endif %}
+
+        <h1 class="headline">
+            {{ config.get('headline', '🎰 JACKPOT! $1,000 WIN!') }}
+        </h1>
+
+        {% if config.get('subheadline') %}
+        <p class="subheadline">
+            {{ config.subheadline }}
+        </p>
+        {% endif %}
+
+        <!-- Slot Machine Animation -->
+        <div class="animation-wrapper">
+            <div class="slots">
+                <span class="slot">🍒</span>
+                <span class="slot">🍒</span>
+                <span class="slot">🍒</span>
+            </div>
+        </div>
+
+        {% if config.get('description') %}
+        <p class="description">
+            {{ config.description }}
+        </p>
+        {% endif %}
+
+        <div class="redirect-message">
+            {{ config.get('redirect_message', 'Claiming your bonus in') }}
+            <span class="redirect-timer">{{ redirect_delay }}</span>
+            {{ config.get('redirect_message_suffix', 'seconds...') }}
+        </div>
+
+        <div class="progress-container">
+            <div class="progress-bar"></div>
+        </div>
+
+    </div>
+
+    <script>
+        window.landingConfig = {
+            utm_id: '{{ utm_id }}',
+            redirect_url: '{{ redirect_url }}',
+            redirect_delay: {{ redirect_delay }}
+        };
+    </script>
+
+    <script src="/static/landings/js/redirect.js"></script>
+
+    {% if config.get('custom_js') %}
+    <script>
+        {{ config.custom_js | safe }}
+    </script>
+    {% endif %}
+
+</body>
+</html>

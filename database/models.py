@@ -640,6 +640,80 @@ class PatternPerformance(Base):
         return f"<PatternPerformance(hook={self.hook_type}, emotion={self.emotion}, cvr={self.avg_cvr/100:.2f}%)>"
 
 
+class LandingPage(Base):
+    """
+    Landing pages for multi-domain campaigns.
+    Allows users to create custom landing pages with templates.
+    """
+
+    __tablename__ = "landing_pages"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True)
+
+    # Landing page info
+    name = Column(String(200), nullable=False)
+    template = Column(String(50), nullable=False)  # lootbox, betting, casino, generic, minimal
+    slug = Column(String(100), unique=True, index=True)  # URL slug
+
+    # Configuration (JSONB)
+    config = Column(JSON, nullable=False, default={})
+    """
+    Example config:
+    {
+        "title": "Win $500!",
+        "headline": "🎁 Win $500 from a $5 Lootbox!",
+        "subheadline": "Join now and get instant access!",
+        "description": "Limited time offer...",
+        "logo_url": "https://...",
+        "favicon": "https://...",
+        "bg_color": "#667eea",
+        "text_color": "#ffffff",
+        "accent_color": "#ffd700",
+        "emoji": "🎁",
+        "redirect_message": "Opening Telegram in",
+        "redirect_message_suffix": "seconds...",
+        "custom_css": ".headline { font-size: 3rem; }",
+        "custom_js": "console.log('Custom tracking');",
+    }
+    """
+
+    # UTM tracking
+    utm_campaign = Column(String(200), index=True)
+    utm_source = Column(String(100))
+    utm_medium = Column(String(100))
+
+    # Redirect configuration
+    redirect_type = Column(String(50), default="bot")  # bot, channel, website
+    redirect_url = Column(String(500))  # Full redirect URL (t.me/bot?start={utm_id})
+    redirect_delay = Column(Integer, default=3)  # Seconds before redirect
+
+    # Domain configuration (optional - for multi-domain setup)
+    custom_domain = Column(String(200), unique=True, index=True, nullable=True)
+    is_domain_verified = Column(Boolean, default=False)
+
+    # Status
+    status = Column(String(50), default="draft")  # draft, active, paused, archived
+    is_published = Column(Boolean, default=False)
+
+    # Performance metrics
+    views = Column(BigInteger, default=0)
+    clicks = Column(BigInteger, default=0)
+    conversions = Column(Integer, default=0)
+
+    # Timestamps
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    published_at = Column(DateTime)
+    last_view_at = Column(DateTime)
+
+    # Relationships
+    user = relationship("User")
+
+    def __repr__(self):
+        return f"<LandingPage(name={self.name}, template={self.template}, views={self.views})>"
+
+
 # Additional indexes for TikTok tracking
 Index("idx_traffic_sources_utm_lookup", TrafficSource.utm_source, TrafficSource.utm_campaign, TrafficSource.created_at.desc())
 Index("idx_conversions_created_at_desc", Conversion.created_at.desc())
@@ -652,3 +726,8 @@ Index("idx_creatives_product_category", Creative.product_category, Creative.cvr.
 Index("idx_creatives_performance", Creative.user_id, Creative.cvr.desc(), Creative.conversions.desc())
 Index("idx_pattern_performance_lookup", PatternPerformance.user_id, PatternPerformance.product_category, PatternPerformance.hook_type, PatternPerformance.emotion)
 Index("idx_creative_patterns_type_value", CreativePattern.pattern_type, CreativePattern.pattern_value)
+
+# Landing pages indexes
+Index("idx_landing_pages_user_status", LandingPage.user_id, LandingPage.status)
+Index("idx_landing_pages_slug", LandingPage.slug)
+Index("idx_landing_pages_domain", LandingPage.custom_domain)
