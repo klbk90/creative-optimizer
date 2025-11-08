@@ -95,7 +95,7 @@ docker-compose up -d
 
 ## 🎯 Use Cases
 
-### Scenario 1: TikTok → Telegram → Lootbox
+### Scenario 1: TikTok → Telegram → Product Purchase
 
 ```
 1. Create video on TikTok
@@ -104,7 +104,7 @@ docker-compose up -d
 4. User clicks → Beautiful landing page
 5. Auto-redirect to Telegram channel
 6. User joins channel → Opens bot
-7. User buys lootbox → Conversion tracked
+7. User makes purchase → Conversion tracked
 ```
 
 ### Scenario 2: Telegram Repost → Bot
@@ -132,7 +132,7 @@ Result: Save $700 by skipping bad creatives!
 
 ## 🔧 Integration Examples
 
-### User Bot (Lootbox)
+### User Bot (E-commerce/SaaS)
 
 ```python
 from telegram_bot_integration import track_click, track_conversion_webhook
@@ -150,7 +150,7 @@ def handle_buy(message):
         utm_id=saved_utm_id,
         customer_id=f"telegram_{message.from_user.id}",
         amount=5000,  # $50 in cents
-        product_name="Gold Lootbox"
+        product_name="Premium Subscription"
     )
 ```
 
