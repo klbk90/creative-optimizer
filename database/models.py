@@ -518,11 +518,26 @@ class Creative(Base):
     conversions = Column(Integer, default=0)
     revenue = Column(Integer, default=0)  # in cents
 
+    # App funnel metrics (for white themes: edtech/fitness/finance)
+    installs = Column(Integer, default=0)  # App installs
+    trial_starts = Column(Integer, default=0)  # Trial activations
+    paid_conversions = Column(Integer, default=0)  # Paid subscriptions
+
     # Calculated metrics
     ctr = Column(Integer, default=0)  # CTR * 10000 (e.g., 250 = 2.50%)
     cvr = Column(Integer, default=0)  # CVR * 10000 (e.g., 1500 = 15.00%)
     roas = Column(Integer, default=0)  # ROAS * 100 (e.g., 350 = 3.5x)
     cpa = Column(Integer, default=0)  # Cost per acquisition in cents
+
+    # Funnel rates (for apps)
+    install_rate = Column(Integer, default=0)  # Install rate * 10000
+    trial_rate = Column(Integer, default=0)  # Trial activation rate * 10000
+    trial_to_paid_rate = Column(Integer, default=0)  # Trial→Paid rate * 10000
+
+    # LTV metrics
+    predicted_ltv_d30 = Column(Integer, default=0)  # Predicted 30-day LTV in cents
+    predicted_ltv_d90 = Column(Integer, default=0)  # Predicted 90-day LTV in cents
+    predicted_ltv_d180 = Column(Integer, default=0)  # Predicted 180-day LTV in cents
 
     # Markov Chain predictions (before launch)
     predicted_cvr = Column(Integer)  # Predicted CVR * 10000

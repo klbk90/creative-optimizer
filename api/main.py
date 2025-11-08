@@ -15,7 +15,7 @@ from queue import get_queue
 from utils.logger import setup_logger
 
 # Import routers
-from api.routers import auth, utm, analytics, landing, creative_analysis, landing_builder
+from api.routers import auth, utm, analytics, landing, creative_analysis, landing_builder, pattern_optimization
 # from api.routers import channels, posts, billing
 
 logger = setup_logger(__name__)
@@ -171,6 +171,7 @@ app.include_router(utm.router, prefix="/api/v1/utm", tags=["UTM Tracking"])
 app.include_router(analytics.router, prefix="/api/v1/analytics", tags=["Analytics"])
 app.include_router(landing.router, prefix="/api/v1/landing", tags=["Landing Pages"])
 app.include_router(creative_analysis.router)  # Already has prefix in router definition
+app.include_router(pattern_optimization.router)  # Pattern optimization features (NEW!)
 app.include_router(landing_builder.router)  # Landing page builder - already has prefix
 # app.include_router(channels.router, prefix="/api/v1/channels", tags=["Channels"])
 # app.include_router(posts.router, prefix="/api/v1/posts", tags=["Posts"])
