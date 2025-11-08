@@ -48,6 +48,12 @@ scikit-learn==1.3.2  # For clustering (KMeans, DBSCAN, PCA)
 lightgbm==4.1.0  # Gradient Boosting for CVR prediction
 apscheduler==3.10.4  # Background tasks scheduler for auto-training
 
+# Video & Audio Analysis (automatic creative analyzer)
+opencv-python==4.9.0.80  # Computer vision for face detection, scene changes
+librosa==0.10.1  # Audio analysis (energy, tempo, voiceover detection)
+moviepy==1.0.3  # Video processing
+soundfile==0.12.1  # Required by librosa for audio loading
+
 # CLIP Embeddings (optional - heavy dependencies, uncomment if needed)
 # transformers==4.36.2
 # torch==2.1.2
