@@ -9,17 +9,20 @@ Provides endpoints for:
 5. Updating pattern performance (Markov Chain training)
 """
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
 from sqlalchemy.orm import Session
 from typing import List, Optional
 from pydantic import BaseModel, Field
 from datetime import datetime
 import uuid
+import os
+import tempfile
 
 from database.base import get_db
 from database.models import Creative, CreativePattern, PatternPerformance, TrafficSource
 from utils.markov_chain import MarkovChainPredictor
 from utils.creative_analyzer import CreativeAnalyzer, analyze_creative_quick, analyze_creative_hybrid
+from utils.video_storage import get_video_storage
 from api.dependencies import get_current_user
 
 
@@ -143,6 +146,164 @@ class PatternPerformanceResponse(BaseModel):
 
 
 # ==================== ENDPOINTS ====================
+
+@router.post("/upload-video")
+async def upload_video(
+    creative_name: str = Field(..., description="Name for this creative"),
+    product_category: str = Field(..., description="Product category"),
+    video: UploadFile = File(..., description="Video file (mp4, mov, etc)"),
+    auto_analyze: bool = Field(default=True, description="Automatically analyze video after upload"),
+    caption: Optional[str] = Field(None, description="Optional caption for analysis"),
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    📤 Upload video creative and store in cloud/local storage.
+
+    **Workflow:**
+    1. Upload video file (multipart/form-data)
+    2. Store in VideoStorage (Cloudflare R2, S3, or local)
+    3. Optionally analyze automatically (OpenCV + librosa)
+    4. Return storage_key + analysis results
+
+    **Example request (using curl):**
+    ```bash
+    curl -X POST "http://localhost:8000/api/v1/creative/upload-video" \\
+      -H "Authorization: Bearer YOUR_TOKEN" \\
+      -F "video=@/path/to/video.mp4" \\
+      -F "creative_name=UGC Lootbox Test 1" \\
+      -F "product_category=lootbox" \\
+      -F "auto_analyze=true" \\
+      -F "caption=Wait until the end! 🔥"
+    ```
+
+    **Response:**
+    ```json
+    {
+      "storage_key": "user-123/creatives/uuid-456.mp4",
+      "video_url": "https://r2.cloudflare.com/...?signature=...",
+      "creative_id": "uuid-456",
+      "analysis": {
+        "hook_type": "wait",
+        "emotion": "excitement",
+        "pacing": "fast",
+        "has_face": true,
+        "audio_energy": "high",
+        "predicted_cvr": 0.12,
+        "confidence": 0.75
+      }
+    }
+    ```
+
+    **Storage backends:**
+    - Local (MVP): STORAGE_TYPE=local
+    - Cloudflare R2 (recommended): STORAGE_TYPE=r2
+    - DigitalOcean Spaces: STORAGE_TYPE=spaces
+    - AWS S3: STORAGE_TYPE=s3
+    """
+
+    user_id = current_user["user_id"]
+    creative_id = str(uuid.uuid4())
+
+    # Validate file type
+    if not video.content_type or not video.content_type.startswith("video/"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid file type: {video.content_type}. Must be a video file."
+        )
+
+    try:
+        # 1. Save uploaded file to temporary location
+        file_ext = os.path.splitext(video.filename)[1] or ".mp4"
+        temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=file_ext)
+
+        # Read and write video data
+        content = await video.read()
+        temp_file.write(content)
+        temp_file.close()
+
+        # 2. Upload to VideoStorage
+        storage = get_video_storage()
+        storage_key = storage.upload(
+            file_path=temp_file.name,
+            creative_id=creative_id,
+            user_id=user_id
+        )
+
+        # 3. Generate presigned URL (1 hour expiry)
+        video_url = storage.get_url(storage_key, expires_in=3600)
+
+        # 4. Auto-analyze if requested
+        analysis = None
+        if auto_analyze:
+            try:
+                from utils.creative_analyzer import analyze_creative_hybrid
+
+                # Download for analysis (if using cloud storage)
+                local_path = storage.download(storage_key) if storage.storage_type != "local" else temp_file.name
+
+                # Analyze video
+                analysis = analyze_creative_hybrid(
+                    video_path=local_path,
+                    caption=caption,
+                    hashtags=[]
+                )
+
+                # Predict CVR
+                predictor = MarkovChainPredictor(
+                    db=db,
+                    user_id=user_id,
+                    product_category=product_category
+                )
+
+                prediction = predictor.predict_cvr(
+                    hook_type=analysis["hook_type"],
+                    emotion=analysis["emotion"],
+                    pacing=analysis["pacing"],
+                    cta_type=analysis.get("cta_type")
+                )
+
+                analysis["predicted_cvr"] = prediction["predicted_cvr"]
+                analysis["predicted_cvr_percent"] = prediction["predicted_cvr_percent"]
+
+                # Cleanup temp file if different from upload
+                if local_path != temp_file.name:
+                    storage.cleanup_temp_file(local_path)
+
+            except Exception as e:
+                # Analysis failed but upload succeeded
+                analysis = {"error": f"Analysis failed: {str(e)}"}
+
+        # 5. Cleanup upload temp file
+        if os.path.exists(temp_file.name) and storage.storage_type != "local":
+            os.remove(temp_file.name)
+
+        return {
+            "message": "Video uploaded successfully",
+            "storage_key": storage_key,
+            "video_url": video_url if not video_url.startswith("file://") else None,
+            "creative_id": creative_id,
+            "creative_name": creative_name,
+            "storage_type": storage.storage_type,
+            "analysis": analysis,
+            "next_steps": [
+                "1. Save creative: POST /api/v1/creative/creatives",
+                "2. Create UTM link: POST /api/v1/utm/links",
+                "3. Run micro-test ($10-50)",
+                "4. Update metrics: POST /api/v1/creative/update-from-utm"
+            ]
+        }
+
+    except Exception as e:
+        # Cleanup temp file on error
+        if 'temp_file' in locals() and os.path.exists(temp_file.name):
+            os.remove(temp_file.name)
+
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to upload video: {str(e)}"
+        )
+
 
 @router.post("/analyze", response_model=CreativeAnalysisResponse)
 def analyze_creative(
