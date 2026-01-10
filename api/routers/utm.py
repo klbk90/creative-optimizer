@@ -379,7 +379,7 @@ async def list_traffic_sources(
     if utm_campaign:
         query = query.filter(TrafficSource.utm_campaign == utm_campaign)
 
-    traffic_sources = query.order_by(TrafficSource.created_at.desc()).offset(skip).limit(limit).all()
+    traffic_sources = query.order_by(TrafficSource.first_click.desc()).offset(skip).limit(limit).all()
 
     return traffic_sources
 

@@ -9,7 +9,7 @@ Provides endpoints for:
 5. Updating pattern performance (Markov Chain training)
 """
 
-from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form
 from sqlalchemy.orm import Session
 from typing import List, Optional
 from pydantic import BaseModel, Field
@@ -149,11 +149,13 @@ class PatternPerformanceResponse(BaseModel):
 
 @router.post("/upload-video")
 async def upload_video(
-    creative_name: str = Field(..., description="Name for this creative"),
-    product_category: str = Field(..., description="Product category"),
-    video: UploadFile = File(..., description="Video file (mp4, mov, etc)"),
-    auto_analyze: bool = Field(default=True, description="Automatically analyze video after upload"),
-    caption: Optional[str] = Field(None, description="Optional caption for analysis"),
+    video: UploadFile = File(...),
+    creative_name: str = Form(...),
+    product_category: str = Form(...),
+    creative_type: str = Form(default="ugc"),
+    source_platform: str = Form(default="tiktok"),
+    auto_analyze: bool = Form(default=True),
+    caption: Optional[str] = Form(None),
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user)
 ):
@@ -401,12 +403,16 @@ def analyze_creative(
     )
 
 
+class VideoAnalysisRequest(BaseModel):
+    video_path: str = Field(..., description="Path to video file on server")
+    caption: Optional[str] = Field(None, description="Video caption/description")
+    hashtags: Optional[List[str]] = Field(None, description="Hashtags")
+    product_category: str = Field(..., description="Product category")
+
+
 @router.post("/analyze-video-auto")
 def analyze_video_automatic(
-    video_path: str = Field(..., description="Path to video file on server"),
-    caption: Optional[str] = Field(None, description="Video caption/description"),
-    hashtags: Optional[List[str]] = Field(None, description="Hashtags"),
-    product_category: str = Field(..., description="Product category"),
+    request: VideoAnalysisRequest,
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user)
 ):
@@ -419,7 +425,15 @@ def analyze_video_automatic(
     - Текст → hook_type, emotion, cta_type (из caption)
 
     **Бесплатно! Точность 75%! Быстро (10-15 сек)!**
+    """
 
+    # Extract from request
+    video_path = request.video_path
+    caption = request.caption
+    hashtags = request.hashtags
+    product_category = request.product_category
+
+    """
     **Example request:**
     ```json
     {
@@ -964,10 +978,14 @@ def get_winning_cluster(
     return winning
 
 
+class ScalingRequest(BaseModel):
+    budget: int = Field(..., description="Budget in cents")
+    min_cvr: float = Field(default=0.10, description="Minimum CVR threshold")
+
+
 @router.post("/recommend/scaling")
 def recommend_scaling_creatives(
-    budget: int = Field(..., description="Budget in cents (e.g., $50 = 5000)"),
-    min_cvr: float = Field(default=0.10, description="Minimum CVR threshold"),
+    request: ScalingRequest,
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user)
 ):
@@ -989,6 +1007,13 @@ def recommend_scaling_creatives(
     }
     ```
 
+    """
+
+    # Extract request data
+    budget = request.budget
+    min_cvr = request.min_cvr
+
+    """
     **Example response:**
     ```json
     {

@@ -1,321 +1,179 @@
 """
-Автоматический анализатор видео БЕЗ AI API.
-
-Использует:
-- OpenCV - детект лиц, смена сцен
-- librosa - анализ аудио (энергия, темп)
-- moviepy - работа с видео
-
-Определяет:
-- pacing (fast/medium/slow) - по количеству смен сцен
-- has_face (true/false) - детект лиц
-- audio_energy (high/medium/low) - энергия звука
-- has_voiceover (true/false) - есть ли речь
-- num_scenes - количество сцен
-- duration - длительность
+Video Analyzer using Claude 3.5 Sonnet Vision API.
 """
 
-import cv2
-import numpy as np
-import logging
-from typing import Dict, Optional
-from pathlib import Path
+import os
+import subprocess
+import base64
+import json
+import re
+import time
+from typing import Optional, Dict
+from utils.logger import setup_logger
 
-logger = logging.getLogger(__name__)
-
-# Check if optional dependencies are available
-try:
-    from moviepy.editor import VideoFileClip
-    MOVIEPY_AVAILABLE = True
-except ImportError:
-    logger.warning("moviepy not installed. Video duration will be estimated.")
-    MOVIEPY_AVAILABLE = False
-
-try:
-    import librosa
-    LIBROSA_AVAILABLE = True
-except ImportError:
-    logger.warning("librosa not installed. Audio analysis will be skipped.")
-    LIBROSA_AVAILABLE = False
+logger = setup_logger(__name__)
+ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 
 
-class VideoAnalyzer:
+def extract_video_frames(video_path: str, timestamps: list = None) -> list:
     """
-    Автоматический анализ видео креативов.
+    Extract frames from video using ffmpeg.
 
-    Работает БЕЗ AI API - использует только компьютерное зрение.
-    Бесплатно, быстро (10-15 секунд на видео).
+    Args:
+        video_path: Path to video file
+        timestamps: List of timestamps in seconds (default: [0, 3, 10])
+                   - 0s: Hook (first 3 seconds)
+                   - 3s: Body/Transition
+                   - 10s: CTA/End
+
+    Returns:
+        List of base64-encoded frame images
     """
+    if timestamps is None:
+        timestamps = [0, 3, 10]  # Optimize for Hook, Body, CTA
 
-    def __init__(self):
-        # OpenCV cascade для детекта лиц
-        self.face_cascade = cv2.CascadeClassifier(
-            cv2.data.haarcascades + 'haarcascade_frontalface_default.xml'
+    frames = []
+    try:
+        # Get duration to validate timestamps
+        duration_cmd = [
+            "ffprobe", "-v", "error",
+            "-show_entries", "format=duration",
+            "-of", "default=noprint_wrappers=1:nokey=1",
+            video_path
+        ]
+        duration = float(subprocess.check_output(duration_cmd).decode().strip())
+
+        # Adjust timestamps if video is shorter
+        adjusted_timestamps = [min(t, duration - 0.1) for t in timestamps]
+
+        for i, timestamp in enumerate(adjusted_timestamps):
+            output_path = f"/tmp/frame_{i}_{int(timestamp)}s.png"
+
+            extract_cmd = [
+                "ffmpeg",
+                "-ss", str(timestamp),  # Seek to timestamp
+                "-i", video_path,
+                "-vframes", "1",  # Extract 1 frame
+                "-q:v", "2",  # Quality (2 = high)
+                "-y",  # Overwrite
+                output_path
+            ]
+            subprocess.run(extract_cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
+
+            with open(output_path, "rb") as f:
+                frame_b64 = base64.b64encode(f.read()).decode('utf-8')
+                frames.append({
+                    "data": frame_b64,
+                    "timestamp": timestamp,
+                    "label": _get_frame_label(timestamp)
+                })
+            os.remove(output_path)
+
+        logger.info(f"✅ Extracted {len(frames)} frames at {timestamps}s")
+        return frames
+    except Exception as e:
+        logger.error(f"Frame extraction failed: {e}")
+        return []
+
+
+def _get_frame_label(timestamp: float) -> str:
+    """Get semantic label for frame based on timestamp."""
+    if timestamp <= 1:
+        return "hook"
+    elif timestamp <= 5:
+        return "transition"
+    else:
+        return "cta"
+
+
+def analyze_video_with_claude(video_path: str) -> Optional[Dict]:
+    """Analyze video using Claude Vision API."""
+    if not ANTHROPIC_API_KEY:
+        logger.warning("ANTHROPIC_API_KEY not set")
+        return None
+
+    frames = extract_video_frames(video_path)
+    if not frames:
+        return None
+
+    prompt = """Analyze this EdTech/Online Course UGC video from 3 key frames (Hook at 0s, Body at 3s, CTA at 10s).
+
+Extract the following:
+
+1. **hook_type**: problem_agitation, before_after, question, social_proof, insider_secret, urgency, transformation, pain_point, generic_intro
+
+2. **emotion**: frustration, achievement, curiosity, trust, hope, fomo, empathy, neutral
+
+3. **pacing**: fast, medium, slow
+
+4. **target_audience_pain**: no_time, lack_results, fear_missing_out, overwhelmed, skepticism, tried_everything, lack_knowledge, unknown
+
+5. **psychotype** (target audience psychological profile):
+   - **Switcher**: Constantly jumping between courses/platforms. Looking for "the one" perfect solution. Impatient, easily distracted.
+   - **Status Seeker**: Motivated by certificates, credentials, social proof. Wants to show off achievements. Career-focused.
+   - **Skill Upgrader**: Practical learner. Wants specific skills for immediate application. ROI-driven. "Just teach me how to do X".
+   - **Freedom Hunter**: Values flexibility, self-paced learning, location independence. Wants to escape 9-5. Lifestyle-focused.
+   - **Safety Seeker**: Risk-averse. Needs guarantees, testimonials, step-by-step guidance. Fears failure. Wants proven methods.
+
+Respond ONLY in valid JSON format:
+{"hook_type": "...", "emotion": "...", "pacing": "...", "target_audience_pain": "...", "psychotype": "...", "reasoning": "..."}"""
+
+    try:
+        import anthropic
+        client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+
+        content = [{"type": "text", "text": prompt}]
+
+        # Add frames with labels for context
+        for frame in frames:
+            frame_label = frame.get("label", "unknown")
+            timestamp = frame.get("timestamp", 0)
+
+            # Add context for each frame
+            content.append({
+                "type": "text",
+                "text": f"\n[Frame at {timestamp}s - {frame_label.upper()}]:"
+            })
+            content.append({
+                "type": "image",
+                "source": {
+                    "type": "base64",
+                    "media_type": "image/png",
+                    "data": frame["data"]
+                }
+            })
+        
+        response = client.messages.create(
+            model="claude-3-5-sonnet-20241022",
+            max_tokens=1024,
+            messages=[{"role": "user", "content": content}]
         )
-
-    def analyze(self, video_path: str) -> Dict:
-        """
-        Полный анализ видео.
-
-        Args:
-            video_path: Путь к видео файлу
-
-        Returns:
-            {
-                "duration_seconds": 15,
-                "pacing": "fast",
-                "num_scenes": 8,
-                "has_face": true,
-                "audio_energy": "high",
-                "has_voiceover": true,
-                "confidence": 0.75
-            }
-        """
-
-        if not Path(video_path).exists():
-            raise FileNotFoundError(f"Video file not found: {video_path}")
-
-        # 1. Анализ видео (OpenCV)
-        video_data = self._analyze_video(video_path)
-
-        # 2. Анализ аудио (librosa)
-        audio_data = self._analyze_audio(video_path)
-
-        # 3. Объединить результаты
-        return {
-            **video_data,
-            **audio_data,
-            "confidence": 0.75  # Хорошая точность для технического анализа
-        }
-
-    def _analyze_video(self, video_path: str) -> Dict:
-        """
-        Анализ видео: pacing, has_face, scene_changes.
-
-        Returns:
-            {
-                "duration_seconds": 15,
-                "pacing": "fast",
-                "num_scenes": 8,
-                "has_face": true
-            }
-        """
-
-        # Получить длительность
-        duration = self._get_duration(video_path)
-
-        # Открыть видео
-        cap = cv2.VideoCapture(video_path)
-
-        if not cap.isOpened():
-            logger.error(f"Failed to open video: {video_path}")
-            return self._fallback_video_analysis(duration)
-
-        fps = cap.get(cv2.CAP_PROP_FPS)
-        total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-
-        # Анализировать каждый N-й кадр (для скорости)
-        frame_skip = max(1, int(fps / 3))  # ~3 кадра в секунду
-
-        scene_changes = 0
-        prev_frame = None
-        frame_count = 0
-        has_face = False
-
-        logger.info(f"Analyzing video: {video_path} ({duration}s, {fps} fps)")
-
-        while cap.isOpened():
-            ret, frame = cap.read()
-            if not ret:
-                break
-
-            frame_count += 1
-
-            # Пропустить кадры для ускорения
-            if frame_count % frame_skip != 0:
-                continue
-
-            # Конвертировать в grayscale
-            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-
-            # Детект лиц (только если ещё не нашли)
-            if not has_face:
-                faces = self.face_cascade.detectMultiScale(
-                    gray,
-                    scaleFactor=1.1,
-                    minNeighbors=4,
-                    minSize=(30, 30)
-                )
-                if len(faces) > 0:
-                    has_face = True
-                    logger.debug(f"Face detected at frame {frame_count}")
-
-            # Детект смены сцен
-            if prev_frame is not None:
-                # Вычислить разницу между кадрами
-                diff = cv2.absdiff(prev_frame, gray)
-                mean_diff = np.mean(diff)
-
-                # Если разница большая → смена сцены
-                # Threshold: 30 (можно настроить)
-                if mean_diff > 30:
-                    scene_changes += 1
-                    logger.debug(f"Scene change detected at frame {frame_count} (diff: {mean_diff:.2f})")
-
-            prev_frame = gray.copy()
-
-        cap.release()
-
-        # Определить pacing по количеству смен сцен
-        scenes_per_second = scene_changes / duration if duration > 0 else 0
-
-        if scenes_per_second > 1.5:
-            pacing = "fast"      # Больше 1.5 смен/сек → быстрый темп
-        elif scenes_per_second > 0.5:
-            pacing = "medium"    # 0.5-1.5 смен/сек → средний
-        else:
-            pacing = "slow"      # Меньше 0.5 смен/сек → медленный
-
-        logger.info(
-            f"Video analysis complete: pacing={pacing}, scenes={scene_changes}, "
-            f"has_face={has_face}, scenes/sec={scenes_per_second:.2f}"
-        )
-
-        return {
-            "duration_seconds": int(duration),
-            "pacing": pacing,
-            "num_scenes": scene_changes,
-            "has_face": has_face,
-            "scenes_per_second": round(scenes_per_second, 2)
-        }
-
-    def _analyze_audio(self, video_path: str) -> Dict:
-        """
-        Анализ аудио: energy, voiceover.
-
-        Returns:
-            {
-                "audio_energy": "high",
-                "has_voiceover": true,
-                "tempo_bpm": 120
-            }
-        """
-
-        if not LIBROSA_AVAILABLE:
-            logger.warning("librosa not available, skipping audio analysis")
-            return {
-                "audio_energy": "unknown",
-                "has_voiceover": False,
-                "tempo_bpm": None
-            }
-
-        try:
-            # Загрузить аудио (только первые 30 секунд для скорости)
-            y, sr = librosa.load(video_path, sr=None, duration=30, mono=True)
-
-            # 1. Audio energy (RMS - Root Mean Square)
-            rms = librosa.feature.rms(y=y)[0]
-            avg_energy = np.mean(rms)
-
-            if avg_energy > 0.15:
-                audio_energy = "high"
-            elif avg_energy > 0.05:
-                audio_energy = "medium"
-            else:
-                audio_energy = "low"
-
-            # 2. Spectral centroid (частотный анализ)
-            # Высокий centroid = речь/вокал, низкий = музыка/бас
-            spectral_centroids = librosa.feature.spectral_centroid(y=y, sr=sr)[0]
-            avg_centroid = np.mean(spectral_centroids)
-
-            # Heuristic: если centroid > 2000 Hz → возможно есть речь
-            has_voiceover = avg_centroid > 2000
-
-            # 3. Tempo (BPM) - опционально
-            try:
-                tempo, _ = librosa.beat.beat_track(y=y, sr=sr)
-                tempo_bpm = int(tempo)
-            except Exception:
-                tempo_bpm = None
-
-            logger.info(
-                f"Audio analysis: energy={audio_energy}, "
-                f"voiceover={has_voiceover}, centroid={avg_centroid:.0f} Hz"
-            )
-
-            return {
-                "audio_energy": audio_energy,
-                "has_voiceover": has_voiceover,
-                "tempo_bpm": tempo_bpm,
-                "spectral_centroid_hz": int(avg_centroid)
-            }
-
-        except Exception as e:
-            logger.error(f"Audio analysis failed: {e}")
-            return {
-                "audio_energy": "unknown",
-                "has_voiceover": False,
-                "tempo_bpm": None
-            }
-
-    def _get_duration(self, video_path: str) -> float:
-        """Получить длительность видео."""
-
-        if MOVIEPY_AVAILABLE:
-            try:
-                clip = VideoFileClip(video_path)
-                duration = clip.duration
-                clip.close()
-                return duration
-            except Exception as e:
-                logger.warning(f"moviepy failed to get duration: {e}")
-
-        # Fallback: использовать OpenCV
-        try:
-            cap = cv2.VideoCapture(video_path)
-            fps = cap.get(cv2.CAP_PROP_FPS)
-            frame_count = cap.get(cv2.CAP_PROP_FRAME_COUNT)
-            cap.release()
-
-            if fps > 0:
-                return frame_count / fps
-        except Exception as e:
-            logger.error(f"Failed to get duration: {e}")
-
-        # Если всё упало - вернуть дефолт
-        return 15.0
-
-    def _fallback_video_analysis(self, duration: float) -> Dict:
-        """Fallback если видео не открылось."""
-
-        return {
-            "duration_seconds": int(duration),
-            "pacing": "unknown",
-            "num_scenes": 0,
-            "has_face": False,
-            "scenes_per_second": 0
-        }
+        
+        response_text = response.content[0].text
+        json_match = re.search(r'```json\s*(.*?)\s*```', response_text, re.DOTALL)
+        result = json.loads(json_match.group(1) if json_match else response_text)
+        
+        logger.info(f"✅ Claude analyzed: {result['hook_type']} + {result['emotion']}")
+        return result
+    except Exception as e:
+        logger.error(f"Claude API error: {e}")
+        return None
 
 
-def analyze_video_quick(video_path: str) -> Dict:
-    """
-    Быстрый анализ видео.
-
-    Usage:
-    ```python
-    from utils.video_analyzer import analyze_video_quick
-
-    result = analyze_video_quick("video.mp4")
-    print(result)
-    # {
-    #   "pacing": "fast",
-    #   "has_face": true,
-    #   "audio_energy": "high",
-    #   ...
-    # }
-    ```
-    """
-
-    analyzer = VideoAnalyzer()
-    return analyzer.analyze(video_path)
+def analyze_video_with_retry(video_path: str, max_retries: int = 3) -> Dict:
+    """Analyze with retries."""
+    for attempt in range(max_retries):
+        result = analyze_video_with_claude(video_path)
+        if result:
+            return result
+        if attempt < max_retries - 1:
+            time.sleep(2 ** attempt)
+    
+    return {
+        "hook_type": "unknown",
+        "emotion": "unknown",
+        "pacing": "medium",
+        "target_audience_pain": "unknown",
+        "psychotype": "unknown",
+        "reasoning": "AI analysis failed"
+    }

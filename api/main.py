@@ -11,12 +11,17 @@ import time
 
 from database.base import init_db
 from cache import get_redis
-from queue import get_queue
+from task_queue import get_queue
 from utils.logger import setup_logger
 
 # Import routers
-from api.routers import auth, utm, analytics, landing, creative_analysis, landing_builder, pattern_optimization
-# from api.routers import channels, posts, billing
+from api.routers import auth, utm, analytics, landing, creative_ml, rudderstack, edtech_landing, landing_pro, pattern_optimization, influencer_search, creative_admin, market_intelligence
+# New clean ML router: creative_ml (working!)
+# RudderStack integration: rudderstack (Bayesian update!)
+# EdTech landing: edtech_landing (NEW - for micro-influencer testing!)
+# Premium landing: landing_pro (STYLISH - modern design!)
+# Pattern optimization: pattern_optimization (Gap Finder, Uniqueness, Trends!)
+# Disabled old buggy routers: creative_mvp, creative_analysis, landing_builder
 
 logger = setup_logger(__name__)
 
@@ -35,6 +40,42 @@ async def lifespan(app: FastAPI):
     try:
         init_db()
         logger.info("✅ Database initialized")
+
+        # Seed benchmark data (only runs if DB is empty)
+        try:
+            from scripts.seed_benchmarks import seed_benchmarks
+            seed_benchmarks()
+        except Exception as seed_error:
+            logger.warning(f"⚠️ Benchmark seeding skipped: {seed_error}")
+
+        # Seed benchmark videos (FB Ad Library examples)
+        try:
+            from scripts.seed_benchmark_videos import seed_benchmark_videos
+            seed_benchmark_videos()
+        except Exception as seed_error:
+            logger.warning(f"⚠️ Benchmark videos seeding skipped: {seed_error}")
+
+        # Trigger analysis for benchmark videos (is_benchmark=True)
+        try:
+            from database.base import SessionLocal
+            from database.models import Creative
+            from utils.analysis_orchestrator import check_analysis_trigger
+
+            db_session = SessionLocal()
+            benchmarks = db_session.query(Creative).filter(
+                Creative.is_benchmark == True,
+                Creative.analysis_status == 'pending'
+            ).all()
+
+            for benchmark in benchmarks:
+                logger.info(f"🎯 Triggering analysis for benchmark: {benchmark.name}")
+                check_analysis_trigger(benchmark.id, db_session)
+
+            db_session.close()
+            logger.info(f"✅ Triggered analysis for {len(benchmarks)} benchmark videos")
+        except Exception as analysis_error:
+            logger.warning(f"⚠️ Benchmark analysis trigger failed: {analysis_error}")
+
     except Exception as e:
         logger.error(f"❌ Database initialization failed: {e}")
 
@@ -170,9 +211,17 @@ app.include_router(auth.router, prefix="/api/v1/auth", tags=["Authentication"])
 app.include_router(utm.router, prefix="/api/v1/utm", tags=["UTM Tracking"])
 app.include_router(analytics.router, prefix="/api/v1/analytics", tags=["Analytics"])
 app.include_router(landing.router, prefix="/api/v1/landing", tags=["Landing Pages"])
-app.include_router(creative_analysis.router)  # Already has prefix in router definition
-app.include_router(pattern_optimization.router)  # Pattern optimization features (NEW!)
-app.include_router(landing_builder.router)  # Landing page builder - already has prefix
+app.include_router(landing_pro.router, prefix="/api/v1")  # Premium stylish landing (NO NPM!)
+app.include_router(edtech_landing.router, prefix="/api/v1")  # EdTech landing pages
+app.include_router(creative_ml.router)  # Clean ML router with Markov Chain + Thompson Sampling
+app.include_router(rudderstack.router)  # RudderStack webhook with Bayesian CVR update
+
+# Webhook routes (альтернативный путь для совместимости)
+app.include_router(rudderstack.router, prefix="/webhooks", include_in_schema=False)  # /webhooks/rudderstack/track
+app.include_router(pattern_optimization.router)  # Pattern optimization (Gap Finder, Uniqueness, Trends)
+app.include_router(influencer_search.router)  # Influencer search with Modash + AI scoring
+app.include_router(creative_admin.router)  # Creative admin (force analyze, video access with JWT)
+app.include_router(market_intelligence.router)  # Market Intelligence (Facebook Ads Library import)
 # app.include_router(channels.router, prefix="/api/v1/channels", tags=["Channels"])
 # app.include_router(posts.router, prefix="/api/v1/posts", tags=["Posts"])
 # app.include_router(billing.router, prefix="/api/v1/billing", tags=["Billing"])

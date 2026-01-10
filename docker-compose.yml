@@ -9,7 +9,7 @@ services:
       POSTGRES_USER: utm_user
       POSTGRES_PASSWORD: utm_password
     ports:
-      - "5432:5432"
+      - "5433:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -22,7 +22,7 @@ services:
     image: redis:7-alpine
     container_name: utm-redis
     ports:
-      - "6379:6379"
+      - "6380:6379"
     volumes:
       - redis_data:/data
     healthcheck:
@@ -64,7 +64,7 @@ services:
       - .:/app
     restart: unless-stopped
 
-  # Prometheus - Metrics collection
+  # Prometheus - Metrics collection (optional - use with --profile monitoring)
   prometheus:
     image: prom/prometheus:latest
     container_name: utm-prometheus
@@ -81,6 +81,8 @@ services:
     depends_on:
       - api
     restart: unless-stopped
+    profiles:
+      - monitoring
 
   # Grafana - Visualization
   grafana:
@@ -96,6 +98,20 @@ services:
       - ./monitoring/grafana-dashboard.json:/etc/grafana/provisioning/dashboards/utm-dashboard.json
     depends_on:
       - prometheus
+    restart: unless-stopped
+    profiles:
+      - monitoring
+
+  # Frontend - React UI
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: creative-optimizer-ui
+    ports:
+      - "3001:80"
+    depends_on:
+      - api
     restart: unless-stopped
 
 volumes:

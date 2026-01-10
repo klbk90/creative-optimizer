@@ -73,34 +73,50 @@ class ThompsonSamplingOptimizer:
         Вычислить Thompson Sampling score для паттерна.
 
         Использует Beta distribution: Beta(alpha, beta)
-        - alpha = успехи (conversions)
-        - beta = провалы (clicks - conversions)
+        - alpha = bayesian_alpha (успехи из БД)
+        - beta = bayesian_beta (провалы из БД)
+
+        Формула Thompson Sampling:
+        score = numpy.random.beta(α, β)
+
+        Это балансирует между:
+        - Exploitation: использование проверенных паттернов (высокий α)
+        - Exploration: тестирование новых паттернов (высокая дисперсия)
         """
 
-        # Beta distribution параметры
-        alpha = pattern.total_conversions + 1  # +1 для prior (избежать 0)
-        beta = (pattern.total_clicks - pattern.total_conversions) + 1
+        # Beta distribution параметры из БД (уже обновляются атомарно в rudderstack.py)
+        alpha = pattern.bayesian_alpha or 1.0
+        beta = pattern.bayesian_beta or 1.0
 
         # Thompson Sampling: случайная выборка из Beta distribution
+        # Используем numpy для производительности и стабильности
         sampled_cvr = np.random.beta(alpha, beta)
 
         # Uncertainty (высокая = нужно больше данных)
         uncertainty = beta / (alpha + beta)
 
-        # Expected CVR (среднее)
-        expected_cvr = pattern.avg_cvr / 10000 if pattern.avg_cvr else 0
+        # Expected CVR (среднее) = α / (α + β)
+        expected_cvr = alpha / (alpha + beta)
+
+        # Weight multiplier (benchmark patterns имеют weight=2.0)
+        weight = pattern.weight or 1.0
 
         return {
             'hook_type': pattern.hook_type,
             'emotion': pattern.emotion,
             'pacing': pattern.pacing,
             'cta_type': pattern.cta_type,
+            'psychotype': pattern.psychotype,
             'expected_cvr': round(expected_cvr, 4),
             'sampled_cvr': round(float(sampled_cvr), 4),
             'uncertainty': round(float(uncertainty), 3),
-            'priority': float(sampled_cvr),
+            'priority': float(sampled_cvr) * weight,  # Weight влияет на приоритет
             'sample_size': pattern.sample_size,
-            'total_conversions': pattern.total_conversions
+            'total_conversions': pattern.total_conversions,
+            'alpha': alpha,
+            'beta': beta,
+            'weight': weight,
+            'source': pattern.source or 'client'
         }
 
     def _generate_reasoning(self, pattern: Dict) -> str:

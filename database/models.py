@@ -129,9 +129,9 @@ class Post(Base):
     moderation_status = Column(String(50))  # pending, approved, rejected
 
     # Metadata (JSONB for flexibility)
-    metadata = Column(JSON, default={})
+    extra_data = Column(JSON, default={})
     """
-    Example metadata:
+    Example extra_data:
     {
         "image_source_type": "search",
         "image_search_query": "football match",
@@ -208,6 +208,9 @@ class TrafficSource(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True)
 
+    # Creative link (for testing creatives via influencers)
+    creative_id = Column(UUID(as_uuid=True), ForeignKey("creatives.id"), nullable=True, index=True)
+
     # UTM parameters
     utm_source = Column(String(100), nullable=False, index=True)  # tiktok, instagram, youtube
     utm_medium = Column(String(100))  # social, video, paid
@@ -215,6 +218,13 @@ class TrafficSource(Base):
     utm_content = Column(String(200))  # video_id or creative_variant
     utm_term = Column(String(200))  # keywords or targeting
     utm_id = Column(String(100), unique=True, index=True)  # unique tracking ID
+
+    # Influencer data (for micro-influencer testing)
+    influencer_handle = Column(String(100), nullable=True, index=True)
+    influencer_email = Column(String(255), nullable=True)
+    influencer_followers = Column(Integer, nullable=True)
+    influencer_engagement_rate = Column(Integer, nullable=True)  # ER * 10000 (e.g., 350 = 3.5%)
+    influencer_status = Column(String(50), nullable=True)  # potential, contacted, agreed, posted, rejected
 
     # Landing info
     landing_page = Column(String(500))  # URL where user landed
@@ -228,6 +238,9 @@ class TrafficSource(Base):
     os = Column(String(100))
     country = Column(String(2))  # ISO country code
     city = Column(String(100))
+
+    # RudderStack tracking
+    external_id = Column(String(255), nullable=True)  # RudderStack anonymousId
 
     # Engagement metrics
     clicks = Column(Integer, default=1, nullable=False)
@@ -275,9 +288,9 @@ class Conversion(Base):
     time_to_conversion = Column(Integer)  # seconds from click to conversion
 
     # Metadata
-    metadata = Column(JSON, default={})
+    extra_data = Column(JSON, default={})
     """
-    Example metadata:
+    Example extra_data:
     {
         "lootbox_type": "gold",
         "payment_method": "stripe",
@@ -285,6 +298,9 @@ class Conversion(Base):
         "coupon_code": "FIRST20"
     }
     """
+
+    # RudderStack tracking
+    external_id = Column(String(255), nullable=True)  # RudderStack anonymousId
 
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
 
@@ -485,6 +501,13 @@ class Creative(Base):
     # Testing info
     test_phase = Column(String(50))  # micro_test, ugc_test, small_ads, scale
     product_category = Column(String(100))  # lootbox, sports_betting, gambling, etc.
+    campaign_tag = Column(String(100))  # Simple campaign tag for MVP tracking
+
+    # EdTech-specific: Target audience pain point
+    target_audience_pain = Column(String(100), nullable=True)  # no_time, too_expensive, fear_failure, etc.
+
+    # Psychotype (определяется Claude Vision)
+    psychotype = Column(String(100), nullable=True, index=True)  # Switcher, Status Seeker, Skill Upgrader, Freedom Hunter, Safety Seeker
 
     # CLIP embeddings for similarity analysis (stored as JSON array)
     clip_embedding = Column(JSON)  # 512-dimensional CLIP vector
@@ -548,6 +571,16 @@ class Creative(Base):
     status = Column(String(50), default="draft")  # draft, testing, active, paused, archived
     is_winner = Column(Boolean, default=False)  # Marked as winning creative
 
+    # Analysis tracking (Lazy Analysis Strategy)
+    analysis_status = Column(String(20), default='pending')  # pending, processing, completed, failed, skipped
+    is_benchmark = Column(Boolean, default=False)  # FB Ad Library benchmark videos
+    is_public = Column(Boolean, default=False)  # Public benchmarks accessible to all users
+    deeply_analyzed = Column(Boolean, default=False)  # Claude Vision analyzed
+    ai_reasoning = Column(Text, nullable=True)  # Claude Vision reasoning
+    analysis_cost_cents = Column(Integer, default=0)  # Cost of AI analysis
+    analysis_triggered_at = Column(DateTime, nullable=True)
+    analyzed_at = Column(DateTime, nullable=True)
+
     # Timestamps
     created_at = Column(DateTime, default=datetime.utcnow, index=True)
     tested_at = Column(DateTime)  # When testing started
@@ -555,7 +588,7 @@ class Creative(Base):
 
     # Relationships
     user = relationship("User")
-    traffic_source = relationship("TrafficSource")
+    traffic_source = relationship("TrafficSource", foreign_keys="[Creative.traffic_source_id]")
     patterns = relationship("CreativePattern", back_populates="creative", cascade="all, delete-orphan")
 
     def __repr__(self):
@@ -585,9 +618,9 @@ class CreativePattern(Base):
     confidence = Column(Integer, default=100)  # confidence * 100 (e.g., 8500 = 85%)
 
     # Additional metadata
-    metadata = Column(JSON, default={})
+    extra_data = Column(JSON, default={})
     """
-    Example metadata:
+    Example extra_data:
     {
         "text": "Wait for it...",
         "screen_position": "top",
@@ -616,14 +649,30 @@ class PatternPerformance(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True)
 
+    # Pattern hash (for quick lookup)
+    pattern_hash = Column(String(255), nullable=True, index=True)
+
     # Pattern combination (can be single or multi-pattern)
     hook_type = Column(String(50), index=True)
     emotion = Column(String(50), index=True)
     pacing = Column(String(50), index=True)
     cta_type = Column(String(50))
 
+    # EdTech-specific: Target audience pain point
+    target_audience_pain = Column(String(100), nullable=True, index=True)
+
+    # Psychotype (Switcher, Status Seeker, Skill Upgrader, Freedom Hunter, Safety Seeker)
+    psychotype = Column(String(100), nullable=True, index=True)
+
     # Product category (patterns perform differently by product)
     product_category = Column(String(100), index=True)
+
+    # Data source and weighting (for Market Intelligence)
+    source = Column(String(50), default='client', index=True)  # 'benchmark' or 'client'
+    weight = Column(Float, default=1.0)  # benchmark=2.0 (эталон), client=1.0
+    market_longevity_days = Column(Integer, nullable=True)  # How long the ad ran in market
+    bayesian_alpha = Column(Float, default=1.0)  # Bayesian prior alpha (successes)
+    bayesian_beta = Column(Float, default=1.0)  # Bayesian prior beta (failures)
 
     # Aggregated metrics from all creatives with this pattern combo
     sample_size = Column(Integer, default=0)  # how many creatives tested
@@ -757,7 +806,7 @@ class ModelMetrics(Base):
     # Мета-информация
     sample_size = Column(Integer, nullable=False)  # Сколько креативов в test set
     improved = Column(Boolean, default=False)  # Улучшилась ли модель по сравнению с предыдущей
-    metadata = Column(JSON, default={})  # Доп. информация (feature importance, etc)
+    model_metadata = Column(JSON, default={})  # Доп. информация (feature importance, etc)
 
     # Timestamps
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
@@ -769,9 +818,63 @@ class ModelMetrics(Base):
         return f"<ModelMetrics(type={self.model_type}, mae={self.mae/10000:.3f}, hit_rate={self.hit_rate/10000:.2%})>"
 
 
-# Additional indexes for TikTok tracking
-Index("idx_traffic_sources_utm_lookup", TrafficSource.utm_source, TrafficSource.utm_campaign, TrafficSource.created_at.desc())
-Index("idx_conversions_created_at_desc", Conversion.created_at.desc())
+class UserSession(Base):
+    """
+    Сессии пользователей для автоатрибуции конверсий.
+
+    Связывает customer_id (из продукта) с utm_id (откуда пришел).
+    Используется для автоматического определения какой креатив
+    привел к покупке.
+
+    Пример:
+    - User приходит по ссылке utm_id="creative_abc"
+    - Сохраняем: customer_id="email@example.com" → utm_id="creative_abc"
+    - User покупает через неделю
+    - Находим по customer_id что он пришел с creative_abc
+    - ✅ Атрибутируем покупку к этому креативу!
+    """
+
+    __tablename__ = "user_sessions"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+
+    # Идентификаторы
+    customer_id = Column(String(255), nullable=False, index=True)  # email, telegram_123, user_id
+    external_id = Column(String(255), nullable=True, index=True)   # RudderStack anonymousId
+    utm_id = Column(String(100), nullable=False, index=True)
+
+    # Связи
+    traffic_source_id = Column(UUID(as_uuid=True), ForeignKey("traffic_sources.id"), nullable=True)
+    creative_id = Column(UUID(as_uuid=True), ForeignKey("creatives.id"), nullable=True, index=True)
+
+    # Timestamps
+    first_interaction = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
+    last_interaction = Column(DateTime, default=datetime.utcnow, nullable=True)
+
+    # Metadata
+    device_type = Column(String(50), nullable=True)
+    ip_address = Column(String(45), nullable=True)
+    country = Column(String(2), nullable=True)
+
+    # Multi-touch attribution
+    touch_count = Column(Integer, default=1)
+
+    # Relationships
+    traffic_source = relationship("TrafficSource")
+    creative = relationship("Creative")
+
+    # Constraints
+    __table_args__ = (
+        Index('idx_user_sessions_customer_utm', 'customer_id', 'utm_id', unique=True),
+    )
+
+    def __repr__(self):
+        return f"<UserSession(customer={self.customer_id}, utm={self.utm_id}, touches={self.touch_count})>"
+
+
+# Additional indexes for TikTok tracking (commented for MVP)
+# Index("idx_traffic_sources_utm_lookup", TrafficSource.utm_source, TrafficSource.utm_campaign, TrafficSource.created_at.desc())
+# Index("idx_conversions_created_at_desc", Conversion.created_at.desc())
 Index("idx_tiktok_videos_status_scheduled", TikTokVideo.status, TikTokVideo.scheduled_at)
 Index("idx_tiktok_accounts_active", TikTokAccount.user_id, TikTokAccount.is_active)
 

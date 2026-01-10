@@ -389,11 +389,16 @@ def track_trial_start(
     return result
 
 
+class PaidConversionRequest(BaseModel):
+    """Paid conversion tracking request."""
+    creative_id: str
+    device_id: str
+    amount: int = Field(..., description="Amount in cents")
+
+
 @router.post("/funnel/paid")
 def track_paid_conversion(
-    creative_id: str,
-    device_id: str,
-    amount: int = Field(..., description="Amount in cents"),
+    request: PaidConversionRequest,
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user)
 ):
@@ -401,7 +406,7 @@ def track_paid_conversion(
     💰 Track paid conversion event."""
 
     tracker = FunnelTracker(db)
-    result = tracker.track_paid_conversion(creative_id, device_id, amount)
+    result = tracker.track_paid_conversion(request.creative_id, request.device_id, request.amount)
 
     return result
 

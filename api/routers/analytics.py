@@ -11,10 +11,11 @@ from datetime import datetime, timedelta
 from collections import defaultdict
 
 from database.base import get_db
-from database.models import TrafficSource, Conversion, TikTokVideo, TikTokAccount, User
+from database.models import TrafficSource, Conversion, TikTokVideo, TikTokAccount, User, PatternPerformance
 from database.schemas import AnalyticsSummary, CampaignPerformance
 from api.dependencies import get_current_user
 from utils.logger import setup_logger
+import numpy as np
 
 logger = setup_logger(__name__)
 router = APIRouter()
@@ -24,8 +25,9 @@ router = APIRouter()
 async def get_dashboard(
     date_from: Optional[datetime] = Query(None, description="Start date for analytics"),
     date_to: Optional[datetime] = Query(None, description="End date for analytics"),
-    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
+    # MVP: No auth required
+    # current_user: User = Depends(get_current_user),
 ):
     """
     Get comprehensive dashboard analytics.
@@ -42,10 +44,14 @@ async def get_dashboard(
     if not date_to:
         date_to = datetime.utcnow()
 
+    # MVP: Use test user
+    import uuid
+    test_user_id = uuid.UUID('00000000-0000-0000-0000-000000000001')
+
     # Query traffic sources in date range
     traffic_sources = db.query(TrafficSource).filter(
         and_(
-            TrafficSource.user_id == current_user.id,
+            TrafficSource.user_id == test_user_id,
             TrafficSource.first_click >= date_from,
             TrafficSource.first_click <= date_to,
         )
@@ -125,7 +131,7 @@ async def get_dashboard(
     # TikTok stats
     tiktok_videos = db.query(TikTokVideo).filter(
         and_(
-            TikTokVideo.user_id == current_user.id,
+            TikTokVideo.user_id == test_user_id,
             TikTokVideo.created_at >= date_from,
             TikTokVideo.created_at <= date_to,
         )
@@ -532,4 +538,161 @@ async def get_time_series(
         },
         "granularity": granularity,
         "data": time_series,
+    }
+
+
+@router.get("/psychotypes", response_model=Dict[str, Any])
+async def get_psychotype_performance(
+    product_category: str = Query(..., description="Product category (e.g., language_learning, fitness)"),
+    db: Session = Depends(get_db),
+    # MVP: No auth required for testing
+    # current_user: User = Depends(get_current_user),
+):
+    """
+    Psychotype Aggregation - агрегирует α и β всех паттернов по психотипам.
+
+    Для каждого психотипа:
+    1. Суммирует bayesian_alpha и bayesian_beta всех паттернов с этим психотипом
+    2. Вычисляет общий CVR = Σα / (Σα + Σβ)
+    3. Применяет Thompson Sampling для рекомендации лучшего психотипа
+    4. Показывает статистику: количество паттернов, sample size, доверительный интервал
+
+    Пример:
+        GET /api/v1/analytics/psychotypes?product_category=language_learning
+
+    Returns:
+        {
+            "psychotypes": {
+                "Freedom Hunter": {
+                    "total_alpha": 150.0,
+                    "total_beta": 850.0,
+                    "aggregate_cvr": 0.15,  # 15%
+                    "thompson_score": 0.16,  # Sample from Beta(150, 850)
+                    "pattern_count": 5,
+                    "total_sample_size": 50,
+                    "confidence_lower": 0.13,
+                    "confidence_upper": 0.18
+                },
+                "Switcher": { ... },
+                ...
+            },
+            "recommendation": {
+                "best_psychotype": "Freedom Hunter",
+                "reasoning": "Highest mathematical potential based on Thompson Sampling"
+            }
+        }
+    """
+
+    # Получить все паттерны для категории с известным психотипом
+    patterns = db.query(PatternPerformance).filter(
+        PatternPerformance.product_category == product_category,
+        PatternPerformance.psychotype.isnot(None),
+        PatternPerformance.sample_size > 0
+    ).all()
+
+    if not patterns:
+        return {
+            "success": False,
+            "message": f"No patterns with psychotype found for {product_category}",
+            "psychotypes": {}
+        }
+
+    # Агрегация по психотипам
+    psychotype_stats = defaultdict(lambda: {
+        "total_alpha": 0.0,
+        "total_beta": 0.0,
+        "pattern_count": 0,
+        "total_sample_size": 0,
+        "total_conversions": 0,
+        "patterns": []
+    })
+
+    for pattern in patterns:
+        psychotype = pattern.psychotype
+        alpha = pattern.bayesian_alpha or 1.0
+        beta = pattern.bayesian_beta or 1.0
+
+        psychotype_stats[psychotype]["total_alpha"] += alpha
+        psychotype_stats[psychotype]["total_beta"] += beta
+        psychotype_stats[psychotype]["pattern_count"] += 1
+        psychotype_stats[psychotype]["total_sample_size"] += (pattern.sample_size or 0)
+        psychotype_stats[psychotype]["total_conversions"] += (pattern.total_conversions or 0)
+        psychotype_stats[psychotype]["patterns"].append({
+            "hook_type": pattern.hook_type,
+            "emotion": pattern.emotion,
+            "cvr": pattern.avg_cvr / 10000 if pattern.avg_cvr else 0
+        })
+
+    # Thompson Sampling для каждого психотипа
+    psychotype_results = {}
+    thompson_scores = []
+
+    for psychotype, stats in psychotype_stats.items():
+        total_alpha = stats["total_alpha"]
+        total_beta = stats["total_beta"]
+
+        # Агрегированный CVR = Σα / (Σα + Σβ)
+        aggregate_cvr = total_alpha / (total_alpha + total_beta)
+
+        # Thompson Sampling: sample из Beta(Σα, Σβ)
+        thompson_score = np.random.beta(total_alpha, total_beta)
+
+        # Доверительный интервал (95%)
+        try:
+            from scipy.stats import beta as beta_dist
+            confidence_lower = beta_dist.ppf(0.025, total_alpha, total_beta)
+            confidence_upper = beta_dist.ppf(0.975, total_alpha, total_beta)
+        except ImportError:
+            # Упрощенный расчет через variance
+            variance = (total_alpha * total_beta) / ((total_alpha + total_beta) ** 2 * (total_alpha + total_beta + 1))
+            std_dev = variance ** 0.5
+            confidence_lower = max(0, aggregate_cvr - 1.96 * std_dev)
+            confidence_upper = min(1, aggregate_cvr + 1.96 * std_dev)
+
+        psychotype_results[psychotype] = {
+            "total_alpha": round(total_alpha, 2),
+            "total_beta": round(total_beta, 2),
+            "aggregate_cvr": round(aggregate_cvr, 4),
+            "thompson_score": round(float(thompson_score), 4),
+            "pattern_count": stats["pattern_count"],
+            "total_sample_size": stats["total_sample_size"],
+            "total_conversions": stats["total_conversions"],
+            "confidence_lower": round(float(confidence_lower), 4),
+            "confidence_upper": round(float(confidence_upper), 4),
+            "top_patterns": stats["patterns"][:3]  # Топ 3 паттерна
+        }
+
+        thompson_scores.append((psychotype, thompson_score))
+
+    # Найти лучший психотип по Thompson Sampling
+    if thompson_scores:
+        best_psychotype, best_score = max(thompson_scores, key=lambda x: x[1])
+        recommendation = {
+            "best_psychotype": best_psychotype,
+            "thompson_score": round(float(best_score), 4),
+            "aggregate_cvr": psychotype_results[best_psychotype]["aggregate_cvr"],
+            "reasoning": (
+                f"Психотип '{best_psychotype}' показывает лучший математический потенциал "
+                f"(CVR: {psychotype_results[best_psychotype]['aggregate_cvr']*100:.1f}%, "
+                f"n={psychotype_results[best_psychotype]['total_sample_size']}) "
+                f"в категории {product_category}"
+            )
+        }
+    else:
+        recommendation = None
+
+    # Сортировать психотипы по Thompson score (descending)
+    sorted_psychotypes = dict(sorted(
+        psychotype_results.items(),
+        key=lambda x: x[1]["thompson_score"],
+        reverse=True
+    ))
+
+    return {
+        "success": True,
+        "product_category": product_category,
+        "psychotypes": sorted_psychotypes,
+        "recommendation": recommendation,
+        "algorithm": "Thompson Sampling with aggregated Beta priors (Σα, Σβ)",
+        "note": "Thompson score учитывает как CVR, так и uncertainty. Высокий score = рекомендация тестировать этот психотип."
     }
