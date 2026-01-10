@@ -39,6 +39,5 @@ EXPOSE 8000
 # Expose port (Railway will set $PORT env var)
 ENV PORT=8000
 
-# Run application (workers=1 for Railway free tier, increase for production)
-# Use shell form to properly expand $PORT variable
-CMD ["sh", "-c", "uvicorn api.main:app --host 0.0.0.0 --port ${PORT} --workers 1"]
+# Run application via Python script that reads PORT from environment
+CMD ["python", "run.py"]
