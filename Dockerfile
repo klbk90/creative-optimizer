@@ -40,4 +40,5 @@ EXPOSE 8000
 ENV PORT=8000
 
 # Run application (workers=1 for Railway free tier, increase for production)
-CMD uvicorn api.main:app --host 0.0.0.0 --port ${PORT} --workers 1
+# Use shell form to properly expand $PORT variable
+CMD ["sh", "-c", "uvicorn api.main:app --host 0.0.0.0 --port ${PORT} --workers 1"]
