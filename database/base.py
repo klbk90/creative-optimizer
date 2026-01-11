@@ -9,7 +9,9 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, Session
 from dotenv import load_dotenv
 
-load_dotenv()
+# Load .env only in local development (not in Railway/production)
+if not os.getenv("RAILWAY_ENVIRONMENT"):
+    load_dotenv()
 
 # Database URL from environment
 DATABASE_URL = os.getenv(
