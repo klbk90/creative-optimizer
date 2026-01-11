@@ -12,3 +12,5 @@ venv/
 README.md
 *.md
 .DS_Store
+.env
+.env.local

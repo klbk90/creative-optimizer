@@ -40,3 +40,4 @@ docker-compose.override.yml
 
 # Git bundles
 *.bundle
+CREDENTIALS_LOCAL.md
