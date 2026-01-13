@@ -323,3 +323,68 @@ class CrossProductOptimizer:
         similar_products.sort(key=lambda x: x[1], reverse=True)
 
         return similar_products
+
+
+# Helper function for recommendations.py
+def thompson_sampling(product_category: str, db: Session, n_recommendations: int = 5, niche: str = None):
+    """
+    Thompson Sampling для получения топ паттернов.
+    
+    Wrapper функция для использования в recommendations.py
+    
+    Args:
+        product_category: Категория продукта
+        db: Database session
+        n_recommendations: Количество рекомендаций
+        niche: EDTECH или HEALTH (опционально)
+    
+    Returns:
+        List[Dict] с топ паттернами
+    """
+    from database.models import PatternPerformance
+    import numpy as np
+    
+    # Фильтр паттернов
+    query = db.query(PatternPerformance).filter(
+        PatternPerformance.product_category == product_category
+    )
+    
+    # Фильтр по niche если указан
+    if niche:
+        query = query.filter(PatternPerformance.niche == niche)
+    
+    patterns = query.all()
+    
+    if not patterns:
+        logger.warning(f"No patterns found for category: {product_category}, niche: {niche}")
+        return []
+    
+    # Thompson Sampling для каждого паттерна
+    results = []
+    for pattern in patterns:
+        alpha = pattern.bayesian_alpha or 1.0
+        beta = pattern.bayesian_beta or 1.0
+        weight = pattern.weight or 1.0
+        
+        # Thompson score
+        thompson_score = np.random.beta(alpha, beta) * weight
+        
+        results.append({
+            'pattern_id': str(pattern.id),
+            'hook_type': pattern.hook_type,
+            'emotion': pattern.emotion,
+            'pacing': pattern.pacing,
+            'psychotype': pattern.psychotype,
+            'target_audience_pain': pattern.target_audience_pain,
+            'thompson_score': thompson_score,
+            'alpha': alpha,
+            'beta': beta,
+            'weight': weight,
+            'sample_size': pattern.sample_size or 0,
+            'mean_cvr': alpha / (alpha + beta) if (alpha + beta) > 0 else 0,
+        })
+    
+    # Сортировать по Thompson score
+    results.sort(key=lambda x: x['thompson_score'], reverse=True)
+    
+    return results[:n_recommendations]
