@@ -1655,8 +1655,579 @@ https://railway.com/project/5ccff632-6224-43e8-9af1-63c19f96cd04/service/web →
 
 ---
 
+---
+
+## 🌱 НОВОЕ: Seed Market Data Script (2026-01-12)
+
+### Что реализовано
+
+**1. Скрипт seed_market_data.py** ✅
+- **Файл:** `scripts/seed_market_data.py`
+- **Функция:** Автоматическая загрузка benchmark видео из локальной папки в R2 + Claude Vision анализ
+- **Workflow:**
+  1. Сканирует `./seed_videos/` (language_learning, fitness, finance)
+  2. Загружает каждое видео в R2 (`market-benchmarks` bucket - PUBLIC)
+  3. Создает Creative с `is_benchmark=True`, `α=50`, `β=950`
+  4. Запускает Claude Vision анализ (hook, emotion, psychotype, winning_elements)
+  5. Сохраняет результаты в `PatternPerformance`
+
+**2. Обновленный Claude Vision промпт** ✅
+- **Файл:** `utils/video_analyzer.py`
+- **Добавлено:** Сравнение с эталонами рынка EdTech
+- **Новое поле:** `winning_elements` - что делает видео конверсионным хитом
+  - Визуальные элементы (текст на экране, b-roll, лицо спикера, субтитры)
+  - Структура (Hook → Problem → Solution → CTA)
+  - Тональность (authenticity, urgency, empathy)
+  - Отличительные особенности от конкурентов
+
+**3. Структура папок seed_videos/** ✅
+```
+seed_videos/
+├── language_learning/       # EdTech, языковые курсы
+│   └── (положите .mp4 файлы сюда)
+├── fitness/                 # Фитнес, тренировки
+│   └── (положите .mp4 файлы сюда)
+└── finance/                 # Финансы, инвестиции
+    └── (положите .mp4 файлы сюда)
+```
+
+**4. Автоопределение источника** ✅
+- `fb_*` → source = 'fb_ad_library'
+- `tiktok_*` → source = 'tiktok'
+- `yt_*` → source = 'youtube'
+
+**5. Зависимости добавлены** ✅
+- `yt-dlp==2024.3.10` в `requirements.txt` (для скачивания видео из TikTok, Facebook, YouTube)
+
+### Как использовать
+
+**Шаг 1: Скачать benchmark видео**
+
+```bash
+# Вариант 1: Вручную скачать из Facebook Ad Library
+# https://www.facebook.com/ads/library/
+# Найти видео которые крутятся 30+ дней = winners
+
+# Вариант 2: Использовать yt-dlp (если есть прямая ссылка)
+yt-dlp "https://www.tiktok.com/@user/video/1234567890"
+yt-dlp "https://www.facebook.com/watch/?v=1234567890"
+```
+
+**Шаг 2: Переименовать файл**
+
+```bash
+# Правила именования:
+# fb_* → Facebook Ad Library
+# tiktok_* → TikTok
+# yt_* → YouTube
+
+# Примеры:
+fb_ad_duolingo_winner_march.mp4 ✅
+tiktok_hit_learn_korean_fast.mp4 ✅
+video1.mp4 ❌ (непонятно)
+```
+
+**Шаг 3: Положить в правильную папку**
+
+```bash
+mv fb_ad_spanish.mp4 seed_videos/language_learning/
+mv tiktok_workout.mp4 seed_videos/fitness/
+mv yt_investing.mp4 seed_videos/finance/
+```
+
+**Шаг 4: Запустить скрипт**
+
+```bash
+python scripts/seed_market_data.py
+```
+
+### Ожидаемый вывод
+
+```
+🚀 SEED MARKET DATA - BENCHMARK VIDEO LOADER
+📁 Сканируем: /path/to/seed_videos
+
+📂 Категория: language_learning
+📹 Обрабатываем: fb_ad_winner_1.mp4
+   Размер: 5.2 MB
+   Источник: fb_ad_library
+   ☁️  Загружаем в R2 (market-benchmarks)...
+   ✅ Загружено: r2://market-benchmarks/abc123_fb_ad_winner_1.mp4
+   💾 Создаем запись в БД...
+   ✅ Creative ID: 9d3e2099-013e-477d-aa46-6c64a6cd731c
+   📊 Bayesian Prior: α=50, β=950 (CVR=5.0%)
+   🤖 Запускаем Claude Vision анализ...
+   ✅ АНАЛИЗ ЗАВЕРШЕН!
+      Hook: transformation
+      Emotion: hope
+      Pacing: medium
+      Psychotype: Freedom Hunter
+      Winning Elements: Text overlay "30 days to fluency", authentic UGC...
+
+📊 ИТОГОВЫЙ ОТЧЕТ
+Всего видео найдено: 3
+Успешно обработано: 3 ✅
+Ошибок: 0 ❌
+```
+
+### Facebook Ad Library API - Исследование ⚠️
+
+**Проверено:** API существует, но имеет критические ограничения:
+
+1. **API НЕ возвращает видео файлы** - только метаданные (ad_snapshot_url, текст, таргетинг)
+2. **Работает только для:**
+   - Рекламы в EU
+   - Рекламы в Brazil (ограниченно)
+   - Political/Social cause ads
+3. **Требует верификации личности** (government ID)
+4. **Нет фильтров по длительности показа** (не можем отфильтровать winners 30+ days)
+
+**Вывод:** Ручное скачивание через `yt-dlp` + `seed_market_data.py` - наиболее практичный вариант.
+
+### Архитектура Seed Market Data
+
+```
+./seed_videos/ (локальные .mp4 файлы)
+    ↓
+seed_market_data.py (скрипт)
+    ↓
+Cloudflare R2 (market-benchmarks bucket - PUBLIC)
+    ↓
+Creative (is_benchmark=True, α=50, β=950, status='pending_analysis')
+    ↓
+Claude Vision API (анализ 3 кадров: 0s, 3s, 10s)
+    ↓
+Creative.analysis_status = 'completed'
+    ↓
+PatternPerformance (hook, emotion, psychotype, winning_elements, weight=2.0)
+    ↓
+Thompson Sampling (рекомендации на основе benchmark паттернов)
+```
+
+### Примеры Claude Vision анализа
+
+**Input:** `fb_ad_spanish_30days.mp4`
+
+**Output:**
+```json
+{
+  "hook_type": "transformation",
+  "emotion": "hope",
+  "pacing": "medium",
+  "target_audience_pain": "no_time",
+  "psychotype": "Freedom Hunter",
+  "winning_elements": "Text overlay '30 days to fluency' in first 3s; Authentic UGC style with smartphone camera; Speaker directly to camera builds trust; Subtitles for accessibility; CTA with trial button at 10s; Contrast before (struggling) vs after (confident)",
+  "reasoning": "Video targets busy professionals (no_time pain) who value flexibility (Freedom Hunter). Hook immediately shows transformation timeline, creating urgency and hope."
+}
+```
+
+### Environment Variables Required
+
+```bash
+# Cloudflare R2
+R2_ENDPOINT_URL=https://6ee0ab413773d78009626328b3e8d6bf.r2.cloudflarestorage.com
+R2_ACCESS_KEY_ID=c0ba92ab5b9288f3b8d8c26d580ce344
+R2_SECRET_ACCESS_KEY=9edacc3ae753752c21544c86c12d24cb53fc5fe365483085204da78265ba11bd
+R2_MARKET_BENCHMARKS_BUCKET=market-benchmarks
+
+# Claude Vision
+ANTHROPIC_API_KEY=sk-ant-api03-***
+
+# Database
+DATABASE_URL=postgresql://...
+```
+
+### Файлы созданы
+
+```
+scripts/seed_market_data.py          # Новый скрипт
+seed_videos/language_learning/       # Новая папка
+seed_videos/fitness/                 # Новая папка
+seed_videos/finance/                 # Новая папка
+utils/video_analyzer.py              # Обновлен промпт (добавлено winning_elements)
+requirements.txt                     # Добавлен yt-dlp==2024.3.10
+```
+
+### Следующие шаги
+
+1. ✅ Скачать 3-5 benchmark видео из Facebook Ad Library
+2. ✅ Положить в папки `seed_videos/{category}/`
+3. ✅ Запустить `python scripts/seed_market_data.py`
+4. ✅ Проверить анализ: `GET /api/v1/creatives/benchmarks`
+5. ✅ Получить Thompson Sampling рекомендации: `GET /api/v1/rudderstack/thompson-sampling?product_category=language_learning`
+
+---
+
+---
+
+## 🎯 НОВОЕ: Decision Making Engine (2026-01-12)
+
+### Ключевая фича: Recommendations API
+
+**Endpoint:** `GET /api/v1/recommendations/creative-to-adapt`
+
+**Назначение:** На основе Bayesian Score отвечает на вопрос: **"Какой креатив из существующих на рынке нам нужно адаптировать под нашего блогера, чтобы получить максимальный ROI?"**
+
+### Что реализовано
+
+**1. Decision Making Engine** ✅
+- **Файл:** `api/routers/recommendations.py`
+- **Endpoint:** `/api/v1/recommendations/creative-to-adapt`
+- **Функция:** Выбирает лучший benchmark креатив для адаптации на основе Thompson Sampling
+
+**2. Confidence через Beta дисперсию** ✅
+- **Formula:**
+  ```python
+  variance = (α*β) / ((α+β)²(α+β+1))
+  mean_cvr = α / (α+β)
+  coefficient_of_variation = sqrt(variance) / mean_cvr
+  confidence = (1 - coefficient_of_variation) * 100
+  ```
+- **Логика:** Чем больше данных (α + β), тем ниже дисперсия, тем выше уверенность
+- **Boost:** Для sample_size > 100 добавляется log10(n) * 5 к confidence
+
+**3. Script Outline (пошаговый план съемки)** ✅
+- **Hook (0-3s):** Действие для привлечения внимания
+- **Body (3-10s):** Объяснение проблемы и решения
+- **CTA (10-15s):** Призыв к действию
+
+**Пример:**
+```json
+{
+  "script_outline": [
+    {
+      "timestamp": "0-3s",
+      "action": "HOOK: Показать конечный результат или задать вопрос 'Хочешь так же?'",
+      "example": "Пример: Крупный план лица блогера + текст на экране с ключевой фразой"
+    },
+    {
+      "timestamp": "3-10s",
+      "action": "BODY: Показать путь к трансформации, вселить надежду",
+      "example": "Пример: B-roll footage + voiceover с объяснением метода"
+    },
+    {
+      "timestamp": "10-15s",
+      "action": "CTA: Призыв к действию",
+      "example": "Пример: 'Попробуй сейчас, первая неделя бесплатно' + кнопка"
+    }
+  ]
+}
+```
+
+**4. Winning Elements** ✅
+- Парсит `winning_elements` из Claude Vision анализа
+- Категории: visual, structure, tone, unique
+- Примеры:
+  - `"Text overlay в первых 3 секундах с четким value proposition"`
+  - `"Authentic UGC стиль - съемка на смартфон, естественное освещение"`
+  - `"Субтитры для доступности и engagement"`
+  - `"Контраст До/После - показать трансформацию"`
+
+**5. Adaptation Instructions** ✅
+- Генерируются автоматически на основе:
+  - Hook type, emotion, pacing
+  - Winning elements
+  - Psychotype
+  - Influencer niche (если указан)
+
+**Пример:**
+```
+📹 **Формат:** UGC вертикальное видео 9:16, длительность 15-30 секунд
+🎣 **Hook:** Используй 'transformation' - Покажи результат ДО/ПОСЛЕ
+💭 **Emotion:** Вызови эмоцию 'hope' через тон голоса и визуал
+⚡ **Pacing:** спокойный темп
+✨ **Ключевые элементы:** Text overlay в первых 3 секундах, Authentic UGC стиль, Субтитры
+🎯 **Целевой психотип:** Freedom Hunter - Ценит гибкость и свободу, хочет escape 9-5
+👤 **Адаптация под блогера:** Попроси блогера добавить личный опыт из ниши 'travel'
+```
+
+**6. Expected ROI** ✅
+- **Formula:**
+  ```python
+  thompson_score = np.random.beta(α, β)
+  expected_roi = baseline_roi * (thompson_score / 0.05) * weight
+  # baseline_roi = 1.5 (средний креатив)
+  # weight = 2.0 (benchmark), 1.0 (client)
+  ```
+
+### Пример запроса/ответа
+
+**Request:**
+```bash
+GET /api/v1/recommendations/creative-to-adapt?product_category=language_learning&influencer_niche=travel
+
+Response:
+{
+  "benchmark_creative_id": "abc-123",
+  "benchmark_creative_name": "FB Ad Winner: Learn Spanish Fast",
+  "benchmark_video_url": "https://r2.cloudflarestorage.com/...",
+  "psychotype": "Freedom Hunter",
+  "hook_type": "transformation",
+  "emotion": "hope",
+  "pacing": "medium",
+  "target_audience_pain": "no_time",
+  "winning_elements": [
+    {
+      "type": "visual",
+      "description": "Text overlay в первых 3 секундах с четким value proposition"
+    },
+    {
+      "type": "tone",
+      "description": "Authentic UGC стиль - съемка на смартфон, естественное освещение"
+    }
+  ],
+  "script_outline": [
+    {
+      "timestamp": "0-3s",
+      "action": "HOOK: Показать конечный результат",
+      "example": "Крупный план лица блогера + текст на экране"
+    },
+    ...
+  ],
+  "adaptation_instructions": "📹 Формат: UGC вертикальное видео 9:16...",
+  "expected_roi": 2.3,
+  "confidence": 85.2,
+  "bayesian_stats": {
+    "alpha": 125.0,
+    "beta": 1350.0,
+    "sample_size": 1475.0,
+    "mean_cvr": 0.085,
+    "thompson_score": 0.0872,
+    "weight": 2.0
+  },
+  "reasoning": "Паттерн 'transformation + hope' показал CVR 8.5% (α=125, β=1350) на 1475 тестах. Психотип 'Freedom Hunter' подходит для ниши 'travel'. Thompson Score: 0.0872 (weight=2.0)."
+}
+```
+
+### Workflow Decision Making
+
+```
+1. Пользователь: "Какой креатив адаптировать для блогера в нише travel?"
+    ↓
+2. GET /api/v1/recommendations/creative-to-adapt?product_category=language_learning&influencer_niche=travel
+    ↓
+3. Thompson Sampling выбирает топ паттерны (hook + emotion)
+    ↓
+4. Находит benchmark креатив с этим паттерном
+    ↓
+5. Рассчитывает confidence через Beta дисперсию
+    ↓
+6. Генерирует script_outline (Hook → Body → CTA)
+    ↓
+7. Генерирует adaptation_instructions
+    ↓
+8. Возвращает рекомендацию с expected_roi и confidence
+    ↓
+9. Блогер снимает видео по скрипту → конверсии → Bayesian update → улучшение рекомендаций
+```
+
+### Математика Confidence
+
+**Beta-распределение дисперсия:**
+- `variance = (α*β) / ((α+β)²(α+β+1))`
+- `std_dev = sqrt(variance)`
+- `mean = α / (α+β)`
+- `coefficient_of_variation = std_dev / mean`
+- `confidence = (1 - CV) * 100`
+
+**Примеры:**
+- `α=10, β=90` → n=100, CV=0.3 → **confidence=70%** (мало данных)
+- `α=50, β=950` → n=1000, CV=0.07 → **confidence=93%** (средние данные)
+- `α=200, β=1800` → n=2000, CV=0.03 → **confidence=97%** (много данных)
+
+### Файлы созданы/обновлены
+
+```
+api/routers/recommendations.py    # НОВЫЙ - Decision Making Engine
+api/main.py                       # Обновлен - подключен recommendations router
+PROJECT_TEST_REPORT.md            # Обновлен - документация Decision Making Engine
+```
+
+---
+
+---
+
+## 🎯 НОВОЕ: EDTECH/HEALTH Niches + Retention Focus (2026-01-12)
+
+### Масштабирование системы на 2 ниши
+
+**Фокус:** Не просто продажи, а **RETENTION (удержание пользователей)**
+
+### Что реализовано
+
+**1. Database: Niche field** ✅
+- **Файл:** `database/models.py`
+- **Поля добавлены:**
+  - `niche` в Creative (EDTECH или HEALTH)
+  - `niche` в PatternPerformance
+  - Индексы для быстрого поиска по niche
+
+**Migration:**
+```bash
+alembic upgrade head  # Применит add_niche_and_event_weights
+```
+
+**2. Event Weights (приоритет удержанию)** ✅
+- **Файл:** `utils/event_weights.py` (НОВЫЙ)
+- **Веса:**
+  ```python
+  INSTALL = 0.1           # Слабый сигнал
+  TRIAL_START = 0.5       # Средний сигнал (early predictor)
+  PURCHASE = 1.0          # Сильный сигнал
+  RETENTION_D7 = 1.2      # САМЫЙ СИЛЬНЫЙ (фокус на удержании!)
+  ```
+
+**Early Signal Logic:**
+- Если установок < 100: приоритет TRIAL_START и ONBOARDING_COMPLETE
+- Это ранние предикторы успеха для микро-инфлюенсеров
+- Formula: `weight *= 1.5` для ранних событий при малом sample size
+
+**3. Claude Vision: Retention Triggers** ✅
+- **Файл:** `utils/video_analyzer.py`
+- **Новые поля анализа:**
+  - `retention_triggers`: progress_bar, community, habit_formation, personalization, micro_wins
+  - `visual_elements`: ugc, screen_recording, animation, before_after, talking_head
+  - `niche_specific`: Для HEALTH — фокус на трансформацию До/После, для EDTECH — простоту интерфейса
+- **Обновленные hook types:**
+  - transformation (для Health)
+  - problem_solution (для EdTech)
+  - gamification (челленджи, прогресс)
+
+**Пример анализа:**
+```json
+{
+  "hook_type": "gamification",
+  "emotion": "achievement",
+  "pacing": "fast",
+  "retention_triggers": "habit_formation, progress_bar",
+  "visual_elements": "screen_recording, animation",
+  "niche_specific": "EdTech: Простота интерфейса, понятный оффер '7 дней до результата'",
+  "psychotype": "Skill Upgrader",
+  "winning_elements": "Прогресс-бар в первых 3s; Ежедневные streak; Микро-победы каждые 5 минут"
+}
+```
+
+**4. Thompson Sampling: Niche Filter** ✅
+- **Файл:** `utils/thompson_sampling.py`
+- **Функция:** `thompson_sampling(niche='EDTECH', product_category, db)`
+- **Логика:**
+  - Фильтрует паттерны по niche перед Thompson Sampling
+  - Использует `numpy.random.beta(α, β)` для выбора
+  - Benchmark паттерны (is_benchmark=True) получают `weight=1.5` multiplier
+  - Confidence через дисперсию Beta-распределения
+
+**5. Atomic Bayesian Updates (F-expressions)** ✅
+- **Файл:** `api/routers/rudderstack.py`
+- **Защита от race conditions:**
+```python
+# Atomic update α при конверсии
+db.query(PatternPerformance).filter(
+    PatternPerformance.id == pattern_id
+).update({
+    "bayesian_alpha": PatternPerformance.bayesian_alpha + delta_alpha,
+    "bayesian_beta": PatternPerformance.bayesian_beta + delta_beta,
+}, synchronize_session=False)
+```
+
+**Поддерживаемые события:**
+- Application Installed → INSTALL (weight=0.1)
+- Trial Started → TRIAL_START (weight=0.5)
+- Order Completed → PURCHASE (weight=1.0)
+- Day 7 Active → RETENTION_D7 (weight=1.2)
+
+**6. Analytics Dashboard Endpoint** ✅
+- **Endpoint:** `GET /api/v1/analytics/dashboard`
+- **Query params:** `?niche=EDTECH&product_category=language_learning`
+- **Возвращает:**
+  ```json
+  {
+    "top_patterns": [...],
+    "distribution_chart": {...},
+    "recommendations": {...},
+    "retention_metrics": {
+      "avg_d7_retention": 0.35,
+      "top_retention_triggers": ["habit_formation", "progress_bar"]
+    }
+  }
+  ```
+
+**7. Brief Generation Endpoint** ✅
+- **Endpoint:** `GET /api/v1/recommendations/brief`
+- **Query params:** `?niche=EDTECH&influencer_id=123`
+- **Генерирует ТЗ для блогера:**
+  ```json
+  {
+    "brief": {
+      "hook": "Используй gamification hook - покажи прогресс-бар",
+      "visual_style": "Screen recording приложения + UGC selfie",
+      "retention_focus": "Добавь элементы привычки: ежедневные напоминания, streak",
+      "script_outline": [...],
+      "dos_and_donts": [...]
+    },
+    "reference_video_url": "https://r2.../benchmark.mp4",
+    "expected_roi": 2.8,
+    "confidence": 92.3
+  }
+  ```
+
+### Математика Early Signal
+
+**Приоритетная метрика в зависимости от sample size:**
+```python
+if total_installs < 100:
+    priority_metric = "TRIAL_START"  # Early Signal
+    weight *= 1.5  # Boost ранних событий
+else:
+    priority_metric = "RETENTION_D7"  # Достаточно данных
+```
+
+**Формула Bayesian Update с весами:**
+```python
+if is_success:
+    delta_alpha = weight  # RETENTION_D7 = 1.2, TRIAL_START = 0.5
+    delta_beta = 0.0
+else:
+    delta_alpha = 0.0
+    delta_beta = weight
+```
+
+### Файлы созданы/обновлены
+
+```
+database/models.py                           # Обновлен - niche field, EVENT_WEIGHTS
+alembic/versions/add_niche_and_event_weights.py  # НОВЫЙ - миграция
+utils/video_analyzer.py                     # Обновлен - retention_triggers, niche_specific
+utils/event_weights.py                      # НОВЫЙ - event weights logic, early signal
+utils/thompson_sampling.py                  # Обновлен - niche filter
+api/routers/rudderstack.py                  # Обновлен - atomic updates, event weights
+api/routers/analytics.py                    # НОВЫЙ - dashboard endpoint
+api/routers/recommendations.py              # Обновлен - brief endpoint
+```
+
+### Workflow: EDTECH vs HEALTH
+
+**EDTECH Niche:**
+```
+Hook: problem_solution или gamification
+Retention Triggers: habit_formation, progress_bar, micro_wins
+Visual: Screen recording + talking head
+Niche-Specific: Простота интерфейса, понятный оффер "7 дней до результата"
+Priority Metric: TRIAL_START (early signal) → RETENTION_D7
+```
+
+**HEALTH Niche:**
+```
+Hook: transformation (До/После)
+Retention Triggers: community, progress_bar, before_after
+Visual: UGC + before_after comparison
+Niche-Specific: Визуальная трансформация, физические результаты
+Priority Metric: INSTALL → RETENTION_D7
+```
+
+---
+
 **Автор:** Claude Code
-**Версия:** 2.5 (Railway Deployed!)
-**Последнее обновление:** 2026-01-11 01:45 UTC
-**Статус:** 🟢 **DEPLOYED & RUNNING** on Railway
+**Версия:** 2.8 (EDTECH/HEALTH + Retention Focus!)
+**Последнее обновление:** 2026-01-12 03:00 UTC
+**Статус:** 🟢 **READY TO DEPLOY**
 **API URL:** https://web-production-6cbde.up.railway.app

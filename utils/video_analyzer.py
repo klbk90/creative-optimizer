@@ -96,27 +96,73 @@ def analyze_video_with_claude(video_path: str) -> Optional[Dict]:
     if not frames:
         return None
 
-    prompt = """Analyze this EdTech/Online Course UGC video from 3 key frames (Hook at 0s, Body at 3s, CTA at 10s).
+    prompt = """Analyze this EDTECH or HEALTH & FITNESS UGC video from 3 key frames (Hook at 0s, Body at 3s, CTA at 10s).
+
+**ВАЖНО:** Сравни это видео с эталонами рынка (Facebook Ad Library, TikTok Creative Center) и выдели элементы, которые влияют на RETENTION (удержание пользователей), а не только на продажи.
 
 Extract the following:
 
-1. **hook_type**: problem_agitation, before_after, question, social_proof, insider_secret, urgency, transformation, pain_point, generic_intro
+1. **hook_type**: (выбери один)
+   - **transformation**: До/После результат (особенно для Health)
+   - **problem_solution**: Проблема → Решение (особенно для EdTech)
+   - **gamification**: Геймификация, челленджи, прогресс
+   - **question**: Провокационный вопрос
+   - **social_proof**: Отзывы, цифры, доказательства
+   - **insider_secret**: Секрет или инсайд
+   - **urgency**: Срочность, ограничение времени
 
 2. **emotion**: frustration, achievement, curiosity, trust, hope, fomo, empathy, neutral
 
 3. **pacing**: fast, medium, slow
 
-4. **target_audience_pain**: no_time, lack_results, fear_missing_out, overwhelmed, skepticism, tried_everything, lack_knowledge, unknown
+4. **retention_triggers** (элементы, которые повышают удержание):
+   - **progress_bar**: Прогресс-бары, визуализация достижений
+   - **community**: Комьюнити, социальные элементы, совместные челленджи
+   - **habit_formation**: Элементы привычки (напоминания, streak, ежедневные задачи)
+   - **personalization**: Персонализация контента под пользователя
+   - **micro_wins**: Быстрые победы, мгновенная обратная связь
+   - **none**: Нет явных retention триггеров
 
-5. **psychotype** (target audience psychological profile):
-   - **Switcher**: Constantly jumping between courses/platforms. Looking for "the one" perfect solution. Impatient, easily distracted.
-   - **Status Seeker**: Motivated by certificates, credentials, social proof. Wants to show off achievements. Career-focused.
-   - **Skill Upgrader**: Practical learner. Wants specific skills for immediate application. ROI-driven. "Just teach me how to do X".
-   - **Freedom Hunter**: Values flexibility, self-paced learning, location independence. Wants to escape 9-5. Lifestyle-focused.
-   - **Safety Seeker**: Risk-averse. Needs guarantees, testimonials, step-by-step guidance. Fears failure. Wants proven methods.
+5. **visual_elements** (визуальный стиль):
+   - **ugc**: UGC стиль, съемка на смартфон, естественное освещение
+   - **screen_recording**: Screen recording приложения/интерфейса
+   - **animation**: Анимация, графика, motion design
+   - **before_after**: Визуальное сравнение До/После
+   - **talking_head**: Говорящая голова (прямо в камеру)
+
+6. **niche_specific** (анализ в зависимости от ниши):
+   - Для **HEALTH**: Фокус на визуальную трансформацию, физические результаты, До/После
+   - Для **EDTECH**: Фокус на простоту интерфейса, понятный оффер, быстрые результаты
+
+7. **target_audience_pain**: no_time, lack_results, fear_missing_out, overwhelmed, skepticism, tried_everything, lack_knowledge, unknown
+
+8. **psychotype** (target audience psychological profile):
+   - **Switcher**: Постоянно ищет "идеальное решение", нетерпеливый
+   - **Status Seeker**: Мотивирован сертификатами, карьерой
+   - **Skill Upgrader**: Практик, хочет конкретные навыки СЕЙЧАС
+   - **Freedom Hunter**: Ценит гибкость и свободу, хочет escape 9-5
+   - **Safety Seeker**: Избегает рисков, нужны гарантии
+
+9. **winning_elements** (что делает это видео конверсионным хитом):
+   - Визуальные элементы (текст на экране, b-roll, лицо спикера, субтитры)
+   - Структура (Hook → Problem → Solution → CTA)
+   - Тональность (authenticity, urgency, empathy)
+   - Retention-focused элементы (прогресс, комьюнити, привычки)
+   - Отличительные особенности от конкурентов
 
 Respond ONLY in valid JSON format:
-{"hook_type": "...", "emotion": "...", "pacing": "...", "target_audience_pain": "...", "psychotype": "...", "reasoning": "..."}"""
+{
+  "hook_type": "...",
+  "emotion": "...",
+  "pacing": "...",
+  "retention_triggers": "...",
+  "visual_elements": "...",
+  "niche_specific": "...",
+  "target_audience_pain": "...",
+  "psychotype": "...",
+  "winning_elements": "...",
+  "reasoning": "..."
+}"""
 
     try:
         import anthropic

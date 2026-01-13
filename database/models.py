@@ -10,6 +10,20 @@ from sqlalchemy.orm import relationship
 from .base import Base
 
 
+# ==================== EVENT WEIGHTS ====================
+# Веса событий для Bayesian update (вклад в alpha/beta)
+EVENT_WEIGHTS = {
+    "INSTALL": 0.1,           # Установка приложения (слабый сигнал)
+    "TRIAL_START": 0.5,       # Начало триала (средний сигнал)
+    "PURCHASE": 1.0,          # Покупка (сильный сигнал)
+    "RETENTION_D7": 1.2,      # Удержание на 7 день (самый сильный сигнал!)
+}
+
+# Допустимые значения niche
+NICHE_EDTECH = "EDTECH"       # EdTech, языковые курсы, онлайн обучение
+NICHE_HEALTH = "HEALTH"       # Health & Fitness, workout, nutrition
+
+
 class User(Base):
     """User model for SaaS multi-tenancy."""
 
@@ -503,6 +517,9 @@ class Creative(Base):
     product_category = Column(String(100))  # lootbox, sports_betting, gambling, etc.
     campaign_tag = Column(String(100))  # Simple campaign tag for MVP tracking
 
+    # Niche (EDTECH or HEALTH) - фокус на удержании
+    niche = Column(String(50), nullable=False, index=True, default='EDTECH')  # EDTECH, HEALTH
+
     # EdTech-specific: Target audience pain point
     target_audience_pain = Column(String(100), nullable=True)  # no_time, too_expensive, fear_failure, etc.
 
@@ -666,6 +683,9 @@ class PatternPerformance(Base):
 
     # Product category (patterns perform differently by product)
     product_category = Column(String(100), index=True)
+
+    # Niche (EDTECH or HEALTH) - фокус на удержании
+    niche = Column(String(50), nullable=False, index=True, default='EDTECH')  # EDTECH, HEALTH
 
     # Data source and weighting (for Market Intelligence)
     source = Column(String(50), default='client', index=True)  # 'benchmark' or 'client'

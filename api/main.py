@@ -15,12 +15,13 @@ from task_queue import get_queue
 from utils.logger import setup_logger
 
 # Import routers
-from api.routers import auth, utm, analytics, landing, creative_ml, rudderstack, edtech_landing, landing_pro, pattern_optimization, influencer_search, creative_admin, market_intelligence
+from api.routers import auth, utm, analytics, landing, creative_ml, rudderstack, edtech_landing, landing_pro, pattern_optimization, influencer_search, creative_admin, market_intelligence, recommendations
 # New clean ML router: creative_ml (working!)
 # RudderStack integration: rudderstack (Bayesian update!)
 # EdTech landing: edtech_landing (NEW - for micro-influencer testing!)
 # Premium landing: landing_pro (STYLISH - modern design!)
 # Pattern optimization: pattern_optimization (Gap Finder, Uniqueness, Trends!)
+# Recommendations: recommendations (DECISION MAKING ENGINE - key feature!)
 # Disabled old buggy routers: creative_mvp, creative_analysis, landing_builder
 
 logger = setup_logger(__name__)
@@ -222,6 +223,7 @@ app.include_router(pattern_optimization.router)  # Pattern optimization (Gap Fin
 app.include_router(influencer_search.router)  # Influencer search with Modash + AI scoring
 app.include_router(creative_admin.router)  # Creative admin (force analyze, video access with JWT)
 app.include_router(market_intelligence.router)  # Market Intelligence (Facebook Ads Library import)
+app.include_router(recommendations.router, prefix="/api/v1/recommendations", tags=["Recommendations"])  # DECISION MAKING ENGINE - key feature!
 # app.include_router(channels.router, prefix="/api/v1/channels", tags=["Channels"])
 # app.include_router(posts.router, prefix="/api/v1/posts", tags=["Posts"])
 # app.include_router(billing.router, prefix="/api/v1/billing", tags=["Billing"])

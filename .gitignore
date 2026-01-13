@@ -41,3 +41,10 @@ docker-compose.override.yml
 # Git bundles
 *.bundle
 CREDENTIALS_LOCAL.md
+
+# Seed videos (benchmark videos from FB Ad Library, TikTok)
+seed_videos/**/*.mp4
+seed_videos/**/*.mov
+seed_videos/**/*.avi
+seed_videos/**/*.mkv
+seed_videos/**/*.webm
