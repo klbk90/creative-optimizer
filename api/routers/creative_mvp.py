@@ -43,46 +43,69 @@ async def upload_creative(
     """
     Упрощенная загрузка креатива для MVP
 
-    - Загружает видео (сохраняет локально)
+    - Загружает видео в Cloudflare R2
     - Создает запись в БД
     - Возвращает ID для отслеживания
     """
+    from utils.storage import get_storage
+    from utils.logger import setup_logger
 
-    # Сохранить файл локально
-    import os
-    upload_dir = "/tmp/utm-videos"
-    os.makedirs(upload_dir, exist_ok=True)
+    logger = setup_logger(__name__)
 
-    file_path = f"{upload_dir}/{uuid.uuid4()}_{video.filename}"
-    with open(file_path, "wb") as f:
-        content = await video.read()
-        f.write(content)
+    try:
+        # Get storage instance
+        storage = get_storage()
 
-    # Создать запись
-    creative = Creative(
-        id=uuid.uuid4(),
-        user_id=uuid.uuid4(),  # TODO: from auth
-        name=creative_name,
-        creative_type=creative_type,
-        product_category=product_category,
-        video_url=file_path,
-        hook_type="unknown",  # Заполнится при анализе
-        emotion="unknown",
-        pacing="medium",
-        predicted_cvr=0.05,  # Дефолтное значение
-        campaign_tag=campaign_tag
-    )
+        # Generate a unique user_id for MVP (anonymous upload)
+        # In production, this would come from authentication
+        anonymous_user_id = str(uuid.uuid4())
 
-    db.add(creative)
-    db.commit()
-    db.refresh(creative)
+        # Read video content
+        video_content = await video.read()
 
-    return {
-        "id": str(creative.id),
-        "name": creative.name,
-        "message": "Креатив загружен. Используйте campaign_tag для отслеживания результатов.",
-        "campaign_tag": campaign_tag
-    }
+        # Upload to R2
+        internal_key = storage.upload_client_video(
+            file_content=video_content,
+            filename=video.filename,
+            user_id=anonymous_user_id
+        )
+
+        # Create database record
+        creative = Creative(
+            id=uuid.uuid4(),
+            user_id=uuid.UUID(anonymous_user_id),
+            name=creative_name,
+            creative_type=creative_type,
+            product_category=product_category,
+            video_url=internal_key,  # r2://client-assets/...
+            hook_type="unknown",  # Заполнится при анализе
+            emotion="unknown",
+            pacing="medium",
+            predicted_cvr=0.05,  # Дефолтное значение
+            campaign_tag=campaign_tag,
+            is_public=False  # MVP videos are private
+        )
+
+        db.add(creative)
+        db.commit()
+        db.refresh(creative)
+
+        logger.info(f"✅ Creative uploaded: {creative.id} → {internal_key}")
+
+        return {
+            "id": str(creative.id),
+            "name": creative.name,
+            "message": "Креатив загружен в Cloudflare R2. Используйте campaign_tag для отслеживания результатов.",
+            "campaign_tag": campaign_tag,
+            "video_url": internal_key
+        }
+
+    except Exception as e:
+        logger.error(f"❌ Upload failed: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Upload failed: {str(e)}"
+        )
 
 
 @router.get("/creatives")
