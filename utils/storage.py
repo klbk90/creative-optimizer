@@ -33,27 +33,26 @@ class StorageAdapter:
     """Abstract storage adapter supporting local and R2."""
 
     def __init__(self):
-        self.storage_type = STORAGE_TYPE
-
-        if self.storage_type == "r2":
-            if not all([R2_ENDPOINT_URL, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY]):
-                logger.warning("R2 credentials missing. Falling back to local storage.")
-                self.storage_type = "local"
-            else:
-                # Initialize S3 client for R2
-                self.s3_client = boto3.client(
-                    's3',
-                    endpoint_url=R2_ENDPOINT_URL,
-                    aws_access_key_id=R2_ACCESS_KEY_ID,
-                    aws_secret_access_key=R2_SECRET_ACCESS_KEY,
-                    region_name='auto'  # R2 uses 'auto'
-                )
-                self.bucket_name = R2_BUCKET_NAME
-                logger.info(f"✅ Cloudflare R2 storage initialized: {R2_BUCKET_NAME}")
-
-        if self.storage_type == "local":
+        # Auto-detect: use R2 if credentials are available, otherwise local
+        if all([R2_ENDPOINT_URL, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY]):
+            self.storage_type = "r2"
+            # Initialize S3 client for R2
+            self.s3_client = boto3.client(
+                's3',
+                endpoint_url=R2_ENDPOINT_URL,
+                aws_access_key_id=R2_ACCESS_KEY_ID,
+                aws_secret_access_key=R2_SECRET_ACCESS_KEY,
+                region_name='auto'  # R2 uses 'auto'
+            )
+            self.bucket_name = R2_BUCKET_NAME
+            logger.info(f"✅ Cloudflare R2 storage initialized (auto-detected)")
+            logger.info(f"   Buckets: {R2_MARKET_BENCHMARKS_BUCKET} (public), {R2_CLIENT_ASSETS_BUCKET} (private)")
+        else:
+            # Fallback to local storage
+            self.storage_type = "local"
             os.makedirs(LOCAL_STORAGE_PATH, exist_ok=True)
-            logger.info(f"✅ Local storage initialized: {LOCAL_STORAGE_PATH}")
+            logger.warning(f"⚠️  R2 credentials not found. Using local storage: {LOCAL_STORAGE_PATH}")
+            logger.warning(f"   Set R2_ENDPOINT_URL, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY to use Cloudflare R2")
 
     def upload_video(self, file_content: bytes, filename: str) -> str:
         """
