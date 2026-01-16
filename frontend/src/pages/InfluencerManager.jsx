@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { Search, Users, Link as LinkIcon, TrendingUp, ExternalLink, Sparkles, Plus, CheckCircle } from 'lucide-react'
 import axios from 'axios'
 
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+const API_BASE = import.meta.env.VITE_API_URL || 'https://web-production-6cbde.up.railway.app'
 
 const InfluencerManager = () => {
   const [activeTab, setActiveTab] = useState('campaigns') // campaigns, search

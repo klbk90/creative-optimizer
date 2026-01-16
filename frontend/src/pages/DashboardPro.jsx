@@ -3,7 +3,7 @@ import { Video, TrendingUp, DollarSign, Zap, Sparkles, Users, Target } from 'luc
 import StatCard from '../components/StatCard'
 import axios from 'axios'
 
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+const API_BASE = import.meta.env.VITE_API_URL || 'https://web-production-6cbde.up.railway.app'
 
 const DashboardPro = () => {
   const [stats, setStats] = useState({

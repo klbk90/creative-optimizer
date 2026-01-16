@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { Sparkles, TrendingUp, AlertTriangle, Target, BarChart3 } from 'lucide-react'
 import axios from 'axios'
 
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+const API_BASE = import.meta.env.VITE_API_URL || 'https://web-production-6cbde.up.railway.app'
 
 const PatternDiscovery = () => {
   const [patterns, setPatterns] = useState([])
