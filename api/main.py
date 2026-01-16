@@ -42,40 +42,41 @@ async def lifespan(app: FastAPI):
         init_db()
         logger.info("✅ Database initialized")
 
+        # TODO: Re-enable after running migration add_niche_and_event_weights
         # Seed benchmark data (only runs if DB is empty)
-        try:
-            from scripts.seed_benchmarks import seed_benchmarks
-            seed_benchmarks()
-        except Exception as seed_error:
-            logger.warning(f"⚠️ Benchmark seeding skipped: {seed_error}")
+        # try:
+        #     from scripts.seed_benchmarks import seed_benchmarks
+        #     seed_benchmarks()
+        # except Exception as seed_error:
+        #     logger.warning(f"⚠️ Benchmark seeding skipped: {seed_error}")
 
         # Seed benchmark videos (FB Ad Library examples)
-        try:
-            from scripts.seed_benchmark_videos import seed_benchmark_videos
-            seed_benchmark_videos()
-        except Exception as seed_error:
-            logger.warning(f"⚠️ Benchmark videos seeding skipped: {seed_error}")
+        # try:
+        #     from scripts.seed_benchmark_videos import seed_benchmark_videos
+        #     seed_benchmark_videos()
+        # except Exception as seed_error:
+        #     logger.warning(f"⚠️ Benchmark videos seeding skipped: {seed_error}")
 
         # Trigger analysis for benchmark videos (is_benchmark=True)
-        try:
-            from database.base import SessionLocal
-            from database.models import Creative
-            from utils.analysis_orchestrator import check_analysis_trigger
+        # try:
+        #     from database.base import SessionLocal
+        #     from database.models import Creative
+        #     from utils.analysis_orchestrator import check_analysis_trigger
 
-            db_session = SessionLocal()
-            benchmarks = db_session.query(Creative).filter(
-                Creative.is_benchmark == True,
-                Creative.analysis_status == 'pending'
-            ).all()
+        #     db_session = SessionLocal()
+        #     benchmarks = db_session.query(Creative).filter(
+        #         Creative.is_benchmark == True,
+        #         Creative.analysis_status == 'pending'
+        #     ).all()
 
-            for benchmark in benchmarks:
-                logger.info(f"🎯 Triggering analysis for benchmark: {benchmark.name}")
-                check_analysis_trigger(benchmark.id, db_session)
+        #     for benchmark in benchmarks:
+        #         logger.info(f"🎯 Triggering analysis for benchmark: {benchmark.name}")
+        #         check_analysis_trigger(benchmark.id, db_session)
 
-            db_session.close()
-            logger.info(f"✅ Triggered analysis for {len(benchmarks)} benchmark videos")
-        except Exception as analysis_error:
-            logger.warning(f"⚠️ Benchmark analysis trigger failed: {analysis_error}")
+        #     db_session.close()
+        #     logger.info(f"✅ Triggered analysis for {len(benchmarks)} benchmark videos")
+        # except Exception as analysis_error:
+        #     logger.warning(f"⚠️ Benchmark analysis trigger failed: {analysis_error}")
 
     except Exception as e:
         logger.error(f"❌ Database initialization failed: {e}")
