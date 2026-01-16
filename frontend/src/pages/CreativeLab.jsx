@@ -16,10 +16,11 @@ const CreativeLab = () => {
   const fetchCreatives = async () => {
     try {
       setLoading(true)
-      const res = await axios.get(`${API_BASE}/api/v1/creative/list`)
+      const res = await axios.get(`${API_BASE}/api/v1/creative/creatives`)
       setCreatives(Array.isArray(res.data) ? res.data : [])
     } catch (error) {
       console.error('Failed to fetch creatives:', error)
+      setCreatives([]) // Set empty array on error
     } finally {
       setLoading(false)
     }
