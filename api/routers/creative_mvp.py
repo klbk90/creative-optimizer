@@ -16,6 +16,31 @@ from api.dependencies import get_current_user
 router = APIRouter(prefix="/api/v1/creative", tags=["Creative MVP"])
 
 
+@router.get("/test-storage")
+async def test_storage():
+    """Debug endpoint to test storage configuration."""
+    try:
+        from utils.storage import get_storage
+        import os
+
+        storage = get_storage()
+
+        return {
+            "storage_type": storage.storage_type,
+            "r2_endpoint": os.getenv("R2_ENDPOINT_URL", "NOT SET"),
+            "r2_access_key": "SET" if os.getenv("R2_ACCESS_KEY_ID") else "NOT SET",
+            "r2_secret": "SET" if os.getenv("R2_SECRET_ACCESS_KEY") else "NOT SET",
+            "client_bucket": os.getenv("R2_CLIENT_ASSETS_BUCKET", "NOT SET"),
+            "market_bucket": os.getenv("R2_MARKET_BENCHMARKS_BUCKET", "NOT SET"),
+        }
+    except Exception as e:
+        import traceback
+        return {
+            "error": str(e),
+            "trace": traceback.format_exc()
+        }
+
+
 class CreativeResponse(BaseModel):
     id: str
     name: str
