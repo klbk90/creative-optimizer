@@ -42,6 +42,13 @@ async def lifespan(app: FastAPI):
         init_db()
         logger.info("✅ Database initialized")
 
+        # Create anonymous user for MVP uploads
+        try:
+            from scripts.create_anonymous_user import create_anonymous_user
+            create_anonymous_user()
+        except Exception as user_error:
+            logger.warning(f"⚠️ Anonymous user creation failed: {user_error}")
+
         # TODO: Re-enable after running migration add_niche_and_event_weights
         # Seed benchmark data (only runs if DB is empty)
         # try:
