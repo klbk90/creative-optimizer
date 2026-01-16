@@ -189,10 +189,10 @@ def trigger_analysis(creative: Creative, db: Session, reason: str = "unknown"):
 
     # Run analysis synchronously (MVP - no worker needed)
     try:
-        from utils.video_analyzer import analyze_video
+        from utils.video_analyzer import analyze_video_with_retry
 
         logger.info(f"🎬 Analyzing video: {creative.video_url}")
-        analysis_result = analyze_video(creative.video_url, creative.product_category)
+        analysis_result = analyze_video_with_retry(creative.video_url)
 
         if analysis_result:
             # Update creative with analysis results
@@ -238,13 +238,11 @@ def force_analyze(creative_id: uuid.UUID, db: Session) -> dict:
             "error": "Creative not found"
         }
 
-    # Check if already processing
+    # Reset status if stuck (force means force!)
     if creative.analysis_status == 'processing':
-        return {
-            "success": False,
-            "error": "Analysis already in progress",
-            "creative_id": str(creative.id)
-        }
+        logger.warning(f"⚠️ Resetting stuck analysis status for: {creative.name}")
+        creative.analysis_status = 'pending'
+        db.commit()
 
     logger.info(f"🚀 FORCE ANALYZE: {creative.name} (manual trigger)")
 

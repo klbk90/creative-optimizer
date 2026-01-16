@@ -407,6 +407,44 @@ class StorageAdapter:
             logger.error(f"Presigned PUT URL generation failed: {e}")
             raise
 
+    def get_file_content(self, internal_key: str) -> Optional[bytes]:
+        """
+        Download file content from R2 storage.
+
+        Used by video analyzer to download videos for Claude Vision analysis.
+
+        Args:
+            internal_key: r2://client-assets/videos/... or r2://market-benchmarks/...
+
+        Returns:
+            File content as bytes, or None if failed
+
+        Example:
+            video_content = storage.get_file_content('r2://client-assets/videos/...')
+        """
+        if not internal_key.startswith('r2://'):
+            logger.error(f"Invalid R2 path: {internal_key}")
+            return None
+
+        try:
+            # Parse bucket and key from r2://bucket/key
+            parts = internal_key.replace('r2://', '').split('/', 1)
+            if len(parts) != 2:
+                logger.error(f"Invalid R2 path format: {internal_key}")
+                return None
+
+            bucket_name, object_key = parts
+
+            # Download from R2
+            response = self.s3_client.get_object(Bucket=bucket_name, Key=object_key)
+            content = response['Body'].read()
+            logger.info(f"✅ Downloaded {len(content)} bytes from R2: {internal_key}")
+            return content
+
+        except Exception as e:
+            logger.error(f"Failed to download from R2: {e}")
+            return None
+
     def get_download_url(self, internal_key: str, expiration: int = 3600) -> str:
         """
         Get presigned download URL for video playback.

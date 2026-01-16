@@ -92,7 +92,41 @@ def analyze_video_with_claude(video_path: str) -> Optional[Dict]:
         logger.warning("ANTHROPIC_API_KEY not set")
         return None
 
-    frames = extract_video_frames(video_path)
+    # Handle R2 paths - download video first
+    local_video_path = video_path
+    if video_path.startswith('r2://'):
+        try:
+            from utils.storage import get_storage
+            import tempfile
+
+            logger.info(f"Downloading video from R2: {video_path}")
+            storage = get_storage()
+
+            # Download video to temp file
+            video_content = storage.get_file_content(video_path)
+            if not video_content:
+                logger.error(f"Failed to download video from R2: {video_path}")
+                return None
+
+            # Save to temp file
+            temp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.mp4')
+            temp_file.write(video_content)
+            temp_file.close()
+            local_video_path = temp_file.name
+            logger.info(f"Video downloaded to: {local_video_path}")
+        except Exception as e:
+            logger.error(f"Failed to download R2 video: {e}")
+            return None
+
+    frames = extract_video_frames(local_video_path)
+
+    # Cleanup temp file if we downloaded from R2
+    if local_video_path != video_path and os.path.exists(local_video_path):
+        try:
+            os.unlink(local_video_path)
+        except:
+            pass
+
     if not frames:
         return None
 
