@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Video, Upload, TrendingUp, AlertCircle, CheckCircle, Clock } from 'lucide-react'
+import { Video, Upload, TrendingUp, AlertCircle, CheckCircle, Clock, Sparkles, Trash2 } from 'lucide-react'
 import axios from 'axios'
 
 const API_BASE = import.meta.env.VITE_API_URL || 'https://web-production-6cbde.up.railway.app'
@@ -8,6 +8,8 @@ const CreativeLab = () => {
   const [creatives, setCreatives] = useState([])
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState('all') // all, testing, significant, scale
+  const [analyzingId, setAnalyzingId] = useState(null)
+  const [deletingId, setDeletingId] = useState(null)
 
   useEffect(() => {
     fetchCreatives()
@@ -23,6 +25,38 @@ const CreativeLab = () => {
       setCreatives([]) // Set empty array on error
     } finally {
       setLoading(false)
+    }
+  }
+
+  const handleAnalyze = async (creativeId) => {
+    try {
+      setAnalyzingId(creativeId)
+      await axios.post(`${API_BASE}/api/v1/creative/creatives/${creativeId}/analyze`)
+      // Refresh creatives list after analysis
+      setTimeout(() => fetchCreatives(), 2000) // Wait 2s for analysis to complete
+      alert('✅ Анализ завершен! Креатив обновлен.')
+    } catch (error) {
+      console.error('Analysis failed:', error)
+      alert('❌ Ошибка анализа. Проверьте что установлен ANTHROPIC_API_KEY.')
+    } finally {
+      setAnalyzingId(null)
+    }
+  }
+
+  const handleDelete = async (creativeId, creativeName) => {
+    if (!confirm(`Удалить креатив "${creativeName}"?`)) return
+
+    try {
+      setDeletingId(creativeId)
+      await axios.delete(`${API_BASE}/api/v1/creative/creatives/${creativeId}`)
+      // Remove from local state
+      setCreatives(creatives.filter(c => c.id !== creativeId))
+      alert('✅ Креатив удален')
+    } catch (error) {
+      console.error('Delete failed:', error)
+      alert('❌ Ошибка удаления')
+    } finally {
+      setDeletingId(null)
     }
   }
 
@@ -221,9 +255,41 @@ const CreativeLab = () => {
                   </div>
                 </div>
 
-                {/* CTA */}
+                {/* Action Buttons */}
+                <div className="mt-4 pt-4 border-t border-gray-100 flex gap-2">
+                  <button
+                    onClick={() => handleAnalyze(creative.id)}
+                    disabled={analyzingId === creative.id}
+                    className="flex-1 btn btn-secondary text-sm py-2 flex items-center justify-center gap-1"
+                  >
+                    {analyzingId === creative.id ? (
+                      <>
+                        <div className="h-3 w-3 animate-spin rounded-full border-2 border-purple-600 border-t-transparent"></div>
+                        Analyzing...
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles className="h-3.5 w-3.5" />
+                        Analyze
+                      </>
+                    )}
+                  </button>
+                  <button
+                    onClick={() => handleDelete(creative.id, creative.name)}
+                    disabled={deletingId === creative.id}
+                    className="btn btn-secondary text-sm py-2 px-3 text-red-600 hover:bg-red-50"
+                  >
+                    {deletingId === creative.id ? (
+                      <div className="h-3 w-3 animate-spin rounded-full border-2 border-red-600 border-t-transparent"></div>
+                    ) : (
+                      <Trash2 className="h-3.5 w-3.5" />
+                    )}
+                  </button>
+                </div>
+
+                {/* Scale CTA */}
                 {status.label === 'Scale Recommended' && (
-                  <div className="mt-4 pt-4 border-t border-gray-100">
+                  <div className="mt-2">
                     <button className="w-full btn btn-primary text-sm py-2">
                       🚀 Scale to Ads
                     </button>

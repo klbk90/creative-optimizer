@@ -123,12 +123,21 @@ async def upload_creative(
 
         logger.info(f"✅ Creative uploaded: {creative.id} → {internal_key}")
 
+        # Trigger analysis (async background task)
+        try:
+            from utils.analysis_orchestrator import check_analysis_trigger
+            check_analysis_trigger(creative.id, db)
+            logger.info(f"🔍 Analysis triggered for creative: {creative.id}")
+        except Exception as analysis_error:
+            logger.warning(f"⚠️ Analysis trigger failed: {analysis_error}")
+
         return {
             "id": str(creative.id),
             "name": creative.name,
-            "message": "Креатив загружен в Cloudflare R2. Используйте campaign_tag для отслеживания результатов.",
+            "message": "Креатив загружен! Анализ запущен в фоновом режиме.",
             "campaign_tag": campaign_tag,
-            "video_url": internal_key
+            "video_url": internal_key,
+            "analysis_status": "processing"
         }
 
     except Exception as e:
@@ -205,3 +214,59 @@ async def update_metrics(
         "conversions": creative.conversions,
         "conversion_rate": creative.conversion_rate
     }
+
+
+@router.delete("/creatives/{creative_id}")
+async def delete_creative(
+    creative_id: str,
+    db: Session = Depends(get_db)
+):
+    """
+    Удалить креатив из базы данных
+    """
+    try:
+        creative = db.query(Creative).filter(Creative.id == uuid.UUID(creative_id)).first()
+
+        if not creative:
+            raise HTTPException(status_code=404, detail="Creative not found")
+
+        # TODO: Optionally delete video file from R2 storage
+        # from utils.storage import get_storage
+        # storage = get_storage()
+        # storage.delete_file(creative.video_url)
+
+        db.delete(creative)
+        db.commit()
+
+        return {
+            "success": True,
+            "message": f"Creative '{creative.name}' deleted successfully"
+        }
+
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid creative ID format")
+
+
+@router.post("/creatives/{creative_id}/analyze")
+async def analyze_creative(
+    creative_id: str,
+    db: Session = Depends(get_db)
+):
+    """
+    Запустить анализ креатива вручную
+    """
+    try:
+        from utils.analysis_orchestrator import force_analyze
+
+        result = force_analyze(uuid.UUID(creative_id), db)
+
+        if not result.get("success"):
+            raise HTTPException(
+                status_code=400,
+                detail=result.get("error", "Analysis failed")
+            )
+
+        return result
+
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid creative ID format")
