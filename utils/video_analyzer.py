@@ -94,6 +94,8 @@ def analyze_video_with_claude(video_path: str) -> Optional[Dict]:
 
     # Handle R2 paths - download video first
     local_video_path = video_path
+    cleanup_needed = False
+
     if video_path.startswith('r2://'):
         try:
             from utils.storage import get_storage
@@ -113,19 +115,27 @@ def analyze_video_with_claude(video_path: str) -> Optional[Dict]:
             temp_file.write(video_content)
             temp_file.close()
             local_video_path = temp_file.name
+            cleanup_needed = True
             logger.info(f"Video downloaded to: {local_video_path}")
         except Exception as e:
             logger.error(f"Failed to download R2 video: {e}")
             return None
+    else:
+        # Local file path - check if file exists
+        if not os.path.exists(video_path):
+            logger.error(f"Video file not found: {video_path}")
+            return None
+        logger.info(f"Analyzing local video: {video_path}")
 
     frames = extract_video_frames(local_video_path)
 
     # Cleanup temp file if we downloaded from R2
-    if local_video_path != video_path and os.path.exists(local_video_path):
+    if cleanup_needed and os.path.exists(local_video_path):
         try:
             os.unlink(local_video_path)
-        except:
-            pass
+            logger.info(f"Cleaned up temp file: {local_video_path}")
+        except Exception as e:
+            logger.warning(f"Failed to cleanup temp file: {e}")
 
     if not frames:
         return None

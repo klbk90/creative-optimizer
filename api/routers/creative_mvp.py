@@ -172,13 +172,18 @@ async def list_creatives(
         "creative_type": c.creative_type,
         "product_category": c.product_category,
         "campaign_tag": c.campaign_tag,
-        "hook_type": c.hook_type,
-        "emotion": c.emotion,
+        "hook_type": c.hook_type or "unknown",
+        "emotion": c.emotion or "unknown",
+        "pacing": c.pacing or "medium",
+        "target_audience_pain": c.target_audience_pain,
+        "psychotype": c.psychotype,
         "predicted_cvr": (c.predicted_cvr or 0) / 10000,  # Convert from int to decimal
-        "conversion_rate": (c.cvr or 0) / 10000,  # Convert from int to decimal
+        "cvr": (c.cvr or 0) / 10000,  # Convert from int to decimal
+        "clicks": c.clicks or 0,
         "impressions": c.impressions or 0,
         "conversions": c.conversions or 0,
-        "test_completed": c.test_completed,
+        "analysis_status": c.analysis_status or "pending",
+        "deeply_analyzed": c.deeply_analyzed or False,
         "created_at": c.created_at.isoformat() if c.created_at else None
     } for c in creatives]
 
