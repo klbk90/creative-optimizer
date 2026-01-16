@@ -167,15 +167,13 @@ def calculate_confidence(impressions: int, conversions: int) -> float:
 
 def trigger_analysis(creative: Creative, db: Session, reason: str = "unknown"):
     """
-    Запускает фоновую задачу на Claude Vision анализ.
+    Запускает Claude Vision анализ (синхронно для MVP).
 
     Args:
         creative: Creative object
         db: Database session
         reason: Причина запуска (benchmark/early_winner/confirmed_winner/force)
     """
-    from utils.background_tasks import enqueue_deep_analysis
-
     # Update status
     creative.analysis_status = 'processing'
     creative.analysis_triggered_at = datetime.utcnow()
@@ -189,12 +187,24 @@ def trigger_analysis(creative: Creative, db: Session, reason: str = "unknown"):
 
     logger.info(f"🔄 Triggering deep analysis for: {creative.name} (reason: {reason})")
 
-    # Enqueue background task
+    # Run analysis synchronously (MVP - no worker needed)
     try:
-        job_id = enqueue_deep_analysis(creative.id)
-        logger.info(f"✅ Analysis job enqueued: {job_id}")
+        from utils.video_analyzer import analyze_video
+
+        logger.info(f"🎬 Analyzing video: {creative.video_url}")
+        analysis_result = analyze_video(creative.video_url, creative.product_category)
+
+        if analysis_result:
+            # Update creative with analysis results
+            mark_analysis_complete(creative.id, analysis_result, db)
+            logger.info(f"✅ Analysis completed: {creative.name}")
+        else:
+            creative.analysis_status = 'failed'
+            db.commit()
+            logger.error(f"❌ Analysis failed: {creative.name}")
+
     except Exception as e:
-        logger.error(f"Failed to enqueue analysis: {e}")
+        logger.error(f"Analysis failed: {e}")
         creative.analysis_status = 'failed'
         db.commit()
 
