@@ -31,7 +31,7 @@ const DashboardPro = () => {
 
       // Fetch all data in parallel
       const [creativesRes, patternsRes, influencersRes] = await Promise.all([
-        axios.get(`${API_BASE}/api/v1/creative/list`).catch(() => ({ data: [] })),
+        axios.get(`${API_BASE}/api/v1/creative/creatives`).catch(() => ({ data: [] })),
         axios.get(`${API_BASE}/api/v1/rudderstack/thompson-sampling?product_category=fitness&n_recommendations=10`).catch(() => ({ data: { recommendations: [] } })),
         fetchTopInfluencers(),
       ])

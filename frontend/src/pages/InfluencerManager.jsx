@@ -30,7 +30,7 @@ const InfluencerManager = () => {
 
   const fetchCampaigns = async () => {
     try {
-      const res = await axios.get(`${API_BASE}/api/v1/creative/list`)
+      const res = await axios.get(`${API_BASE}/api/v1/creative/creatives`)
       const creatives = Array.isArray(res.data) ? res.data : []
       setCampaigns(creatives)
       if (creatives.length > 0 && !selectedCampaign) {
