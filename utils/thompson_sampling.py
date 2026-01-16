@@ -350,8 +350,9 @@ def thompson_sampling(product_category: str, db: Session, n_recommendations: int
     )
     
     # Фильтр по niche если указан
-    if niche:
-        query = query.filter(PatternPerformance.niche == niche)
+    # TODO: Uncomment after running migration add_niche_and_event_weights
+    # if niche:
+    #     query = query.filter(PatternPerformance.niche == niche)
     
     patterns = query.all()
     

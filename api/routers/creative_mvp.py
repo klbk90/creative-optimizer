@@ -16,6 +16,12 @@ from api.dependencies import get_current_user
 router = APIRouter(prefix="/api/v1/creative", tags=["Creative MVP"])
 
 
+@router.get("/ping")
+async def ping():
+    """Simple ping endpoint to test if router is working."""
+    return {"status": "ok", "message": "creative_mvp router is working!"}
+
+
 @router.get("/test-storage")
 async def test_storage():
     """Debug endpoint to test storage configuration."""

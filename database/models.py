@@ -518,7 +518,8 @@ class Creative(Base):
     campaign_tag = Column(String(100))  # Simple campaign tag for MVP tracking
 
     # Niche (EDTECH or HEALTH) - фокус на удержании
-    niche = Column(String(50), nullable=True, index=True, default='EDTECH')  # EDTECH, HEALTH
+    # TODO: Uncomment after running migration add_niche_and_event_weights
+    # niche = Column(String(50), nullable=True, index=True, default='EDTECH')  # EDTECH, HEALTH
 
     # EdTech-specific: Target audience pain point
     target_audience_pain = Column(String(100), nullable=True)  # no_time, too_expensive, fear_failure, etc.
@@ -685,7 +686,8 @@ class PatternPerformance(Base):
     product_category = Column(String(100), index=True)
 
     # Niche (EDTECH or HEALTH) - фокус на удержании
-    niche = Column(String(50), nullable=True, index=True, default='EDTECH')  # EDTECH, HEALTH
+    # TODO: Uncomment after running migration add_niche_and_event_weights
+    # niche = Column(String(50), nullable=True, index=True, default='EDTECH')  # EDTECH, HEALTH
 
     # Data source and weighting (for Market Intelligence)
     source = Column(String(50), default='client', index=True)  # 'benchmark' or 'client'
