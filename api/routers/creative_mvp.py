@@ -213,6 +213,8 @@ async def list_creatives(
         "deeply_analyzed": c.deeply_analyzed or False,
         "status": c.status or "draft",  # Added for frontend filtering
         "duration_seconds": c.duration_seconds,  # Added for frontend display
+        "ai_reasoning": c.ai_reasoning,  # Claude analysis reasoning
+        "features": c.features or {},  # Extended analysis data (retention_triggers, visual_elements, etc.)
         "created_at": c.created_at.isoformat() if c.created_at else None
     } for c in creatives]
 
