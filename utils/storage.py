@@ -33,6 +33,12 @@ class StorageAdapter:
     """Abstract storage adapter supporting local and R2."""
 
     def __init__(self):
+        # Debug: log environment variables (masked)
+        logger.info(f"🔍 Storage initialization:")
+        logger.info(f"   R2_ENDPOINT_URL: {R2_ENDPOINT_URL[:30] + '...' if R2_ENDPOINT_URL else 'NOT SET'}")
+        logger.info(f"   R2_ACCESS_KEY_ID: {'***' + R2_ACCESS_KEY_ID[-4:] if R2_ACCESS_KEY_ID else 'NOT SET'}")
+        logger.info(f"   R2_SECRET_ACCESS_KEY: {'***' + R2_SECRET_ACCESS_KEY[-4:] if R2_SECRET_ACCESS_KEY else 'NOT SET'}")
+
         # Auto-detect: use R2 if credentials are available, otherwise local
         if all([R2_ENDPOINT_URL, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY]):
             self.storage_type = "r2"
