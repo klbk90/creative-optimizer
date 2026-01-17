@@ -2624,3 +2624,62 @@ ffd5ac9 - fix: update anthropic to latest version (>=0.40.0)
 
 **Конец отчета - 2026-01-17**
 
+
+---
+
+## ⚠️ CORS CONFIGURATION (ВАЖНО!)
+
+### Текущая проблема:
+ALLOWED_ORIGINS на Railway НЕ включает Vercel URL!
+
+**Симптомы:**
+- Фронтенд на Vercel делает запросы к Railway
+- Браузер блокирует запросы из-за CORS
+- В консоли: "Access-Control-Allow-Origin header is missing"
+
+**Решение:**
+```bash
+# Установить на Railway:
+railway variables --set ALLOWED_ORIGINS="https://creative-optimizer.vercel.app,http://localhost:3000,http://localhost:8000"
+
+# Проверить установилось:
+railway variables | grep ALLOWED_ORIGINS
+
+# Логи должны показать:
+# "✅ CORS configured for: https://creative-optimizer.vercel.app, ..."
+```
+
+**Файл конфигурации:** `utils/security.py:191-212`
+
+---
+
+## ✅ АРХИТЕКТУРА API (ПРАВИЛЬНО!)
+
+### Claude API вызывается только через Backend Proxy:
+
+```
+Frontend (Vercel)
+    ↓ POST /api/v1/creative/creatives/{id}/analyze
+Backend (Railway)
+    ↓ вызывает utils/video_analyzer.py
+    ↓ axios к Anthropic API
+Claude API (anthropic.com)
+    ↓ возвращает результат
+Backend → Frontend
+```
+
+**НЕТ прямых вызовов Claude API с фронтенда** - правильная архитектура! ✅
+
+---
+
+## 📋 CHECKLIST ПЕРЕД ПРОДАКШЕНОМ:
+
+- [ ] ALLOWED_ORIGINS включает Vercel URL
+- [ ] ANTHROPIC_API_KEY - новый (старый скомпрометирован)
+- [ ] R2_ENDPOINT_URL установлен
+- [ ] R2_ACCESS_KEY_ID установлен
+- [ ] R2_SECRET_ACCESS_KEY установлен
+- [ ] DATABASE_URL корректный
+- [ ] REDIS_URL работает
+- [ ] Миграции применены: `alembic upgrade head`
+
