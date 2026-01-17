@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
 Тестовый скрипт для проверки Claude API.
 Проверяет:
@@ -9,6 +10,10 @@
 
 import os
 import sys
+import io
+
+# Fix encoding issues
+sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
 
 # Проверяем есть ли API ключ
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
