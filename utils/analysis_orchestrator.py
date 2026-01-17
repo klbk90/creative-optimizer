@@ -281,7 +281,19 @@ def mark_analysis_complete(
     creative.emotion = analysis_result.get('emotion', creative.emotion)
     creative.pacing = analysis_result.get('pacing', creative.pacing)
     creative.target_audience_pain = analysis_result.get('target_audience_pain', creative.target_audience_pain)
+    creative.psychotype = analysis_result.get('psychotype', creative.psychotype)
     creative.ai_reasoning = analysis_result.get('reasoning', '')
+
+    # Save extended analysis in features JSON
+    if not creative.features:
+        creative.features = {}
+
+    # Save fields that don't have dedicated columns
+    creative.features['retention_triggers'] = analysis_result.get('retention_triggers')
+    creative.features['visual_elements'] = analysis_result.get('visual_elements')
+    creative.features['niche_specific'] = analysis_result.get('niche_specific')
+    creative.features['winning_elements'] = analysis_result.get('winning_elements')
+    creative.features['timeline'] = analysis_result.get('timeline', [])
 
     # Mark as complete
     creative.analysis_status = 'completed'

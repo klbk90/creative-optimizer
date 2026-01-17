@@ -144,6 +144,8 @@ def analyze_video_with_claude(video_path: str) -> Optional[Dict]:
 
 **ВАЖНО:** Сравни это видео с эталонами рынка (Facebook Ad Library, TikTok Creative Center) и выдели элементы, которые влияют на RETENTION (удержание пользователей), а не только на продажи.
 
+**ТАКЖЕ:** Раскладывай по времени что происходит на каждом этапе - это критично для понимания!
+
 Extract the following:
 
 1. **hook_type**: (выбери один)
@@ -194,6 +196,14 @@ Extract the following:
    - Retention-focused элементы (прогресс, комьюнити, привычки)
    - Отличительные особенности от конкурентов
 
+10. **timeline** (разбивка по времени - что происходит на каждом этапе):
+   Для каждого фрейма укажи:
+   - **timestamp**: "0-3s" | "3-10s" | "10-15s"
+   - **what_happens**: Что показывается в кадре (текст, визуалы, действия)
+   - **emotion_shift**: Как меняется эмоция зрителя
+   - **retention_hook**: Что удерживает внимание на этом этапе
+   - **cta_presence**: Есть ли призыв к действию
+
 Respond ONLY in valid JSON format:
 {
   "hook_type": "...",
@@ -205,6 +215,29 @@ Respond ONLY in valid JSON format:
   "target_audience_pain": "...",
   "psychotype": "...",
   "winning_elements": "...",
+  "timeline": [
+    {
+      "timestamp": "0-3s",
+      "what_happens": "...",
+      "emotion_shift": "...",
+      "retention_hook": "...",
+      "cta_presence": false
+    },
+    {
+      "timestamp": "3-10s",
+      "what_happens": "...",
+      "emotion_shift": "...",
+      "retention_hook": "...",
+      "cta_presence": false
+    },
+    {
+      "timestamp": "10-15s",
+      "what_happens": "...",
+      "emotion_shift": "...",
+      "retention_hook": "...",
+      "cta_presence": true
+    }
+  ],
   "reasoning": "..."
 }"""
 
