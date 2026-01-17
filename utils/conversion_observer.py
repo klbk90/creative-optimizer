@@ -115,9 +115,20 @@ def mark_as_deeply_analyzed(creative_id: uuid.UUID, analysis_result: dict, db: S
     creative.emotion = analysis_result.get("emotion", creative.emotion)
     creative.pacing = analysis_result.get("pacing", creative.pacing)
     creative.target_audience_pain = analysis_result.get("target_audience_pain", creative.target_audience_pain)
+    creative.psychotype = analysis_result.get("psychotype", creative.psychotype)
 
     # Сохраняем reasoning
     creative.ai_reasoning = analysis_result.get("reasoning", "")
+
+    # Save extended analysis in features JSON
+    if not creative.features:
+        creative.features = {}
+
+    creative.features['retention_triggers'] = analysis_result.get('retention_triggers')
+    creative.features['visual_elements'] = analysis_result.get('visual_elements')
+    creative.features['niche_specific'] = analysis_result.get('niche_specific')
+    creative.features['winning_elements'] = analysis_result.get('winning_elements')
+    creative.features['timeline'] = analysis_result.get('timeline', [])
 
     # Помечаем как deeply analyzed
     creative.deeply_analyzed = True
