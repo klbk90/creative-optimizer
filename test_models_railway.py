@@ -11,7 +11,16 @@ if not ANTHROPIC_API_KEY:
 client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
 
 # Models to test (from newest to oldest)
+# Based on new naming convention for Claude 4.x models
 models = [
+    # Claude 4.x models (new)
+    "claude-sonnet-4-20250514",
+    "claude-opus-4-20250514",
+    "claude-haiku-4-20250301",
+
+    # Claude 3.x models (legacy)
+    "claude-3-7-sonnet-20250219",
+    "claude-3-5-haiku-20241022",
     "claude-3-5-sonnet-20241022",
     "claude-3-5-sonnet-20240620",
     "claude-3-opus-20240229",
