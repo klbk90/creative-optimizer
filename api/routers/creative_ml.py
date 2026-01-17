@@ -32,10 +32,20 @@ class CreativeListResponse(BaseModel):
     campaign_tag: Optional[str]
     hook_type: Optional[str]
     emotion: Optional[str]
+    pacing: Optional[str] = None
+    target_audience_pain: Optional[str] = None
+    psychotype: Optional[str] = None
     predicted_cvr: Optional[float]
     cvr: Optional[float]  # Will be converted from int
     impressions: int
     conversions: int
+    clicks: Optional[int] = 0
+    status: Optional[str] = "draft"
+    duration_seconds: Optional[int] = None
+    deeply_analyzed: bool = False
+    analysis_status: Optional[str] = "pending"
+    ai_reasoning: Optional[str] = None
+    features: Optional[dict] = {}
     created_at: str
 
 
@@ -246,12 +256,22 @@ async def list_creatives(
             creative_type=c.creative_type,
             product_category=c.product_category,
             campaign_tag=c.campaign_tag,
-            hook_type=c.hook_type,
-            emotion=c.emotion,
+            hook_type=c.hook_type or "unknown",
+            emotion=c.emotion or "unknown",
+            pacing=c.pacing,
+            target_audience_pain=c.target_audience_pain,
+            psychotype=c.psychotype,
             predicted_cvr=(c.predicted_cvr or 0) / 10000,  # Convert from int to float (500 -> 0.05)
             cvr=(c.cvr or 0) / 10000,  # Convert from int to float
             impressions=c.impressions or 0,
             conversions=c.conversions or 0,
+            clicks=c.clicks or 0,
+            status=c.status or "draft",
+            duration_seconds=c.duration_seconds,
+            deeply_analyzed=c.deeply_analyzed or False,
+            analysis_status=c.analysis_status or "pending",
+            ai_reasoning=c.ai_reasoning,
+            features=c.features or {},
             created_at=c.created_at.isoformat() if c.created_at else datetime.utcnow().isoformat()
         )
         for c in creatives
