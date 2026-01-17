@@ -2231,3 +2231,396 @@ Priority Metric: INSTALL → RETENTION_D7
 **Последнее обновление:** 2026-01-12 03:00 UTC
 **Статус:** 🟢 **READY TO DEPLOY**
 **API URL:** https://web-production-6cbde.up.railway.app
+
+---
+
+# 🔥 АКТУАЛЬНЫЙ СТАТУС ПРОЕКТА (2026-01-17)
+
+**Дата обновления:** 17 января 2026
+**Среда:** Railway (backend) + Vercel (frontend)
+
+---
+
+## ✅ ЧТО РАБОТАЕТ
+
+### Backend (Railway)
+- ✅ **API запущен:** https://web-production-6cbde.up.railway.app
+- ✅ **Health endpoint:** `/health` возвращает 200 OK
+- ✅ **База данных:** PostgreSQL работает
+- ✅ **Redis:** Подключен и работает
+- ✅ **Анонимный пользователь:** Создается автоматически при старте
+- ✅ **Загрузка видео:** `/api/v1/creative/upload` принимает файлы
+- ✅ **Список креативов:** `/api/v1/creative/creatives` возвращает данные
+- ✅ **Удаление креативов:** `DELETE /api/v1/creative/creatives/{id}` работает
+- ✅ **Force analyze endpoint:** `POST /api/v1/creative/creatives/{id}/analyze` запускается
+
+### Frontend (Vercel)
+- ✅ **Фронтенд:** https://creative-optimizer.vercel.app
+- ✅ **Страница Upload:** `/upload` - загрузка видео работает
+- ✅ **Страница Creatives:** `/creatives` - показывает список
+- ✅ **Кнопка Analyze:** Отправляет запрос на анализ
+- ✅ **Кнопка Delete:** Удаляет креативы
+- ✅ **API интеграция:** Фронтенд правильно обращается к Railway API
+
+---
+
+## ❌ ЧТО НЕ РАБОТАЕТ
+
+### 1. Claude Vision API - 404 Error (КРИТИЧНО!)
+
+**Проблема:**
+```
+Claude API error: Error code: 404
+'model: claude-3-5-sonnet-latest' - not_found_error
+```
+
+**Перепробованные модели:**
+- ❌ `claude-3-5-sonnet-20241022` - 404
+- ❌ `claude-3-5-sonnet-20240620` - 404  
+- ❌ `claude-3-5-sonnet-latest` - 404
+
+**Возможные причины:**
+1. **API ключ невалидный или истек**
+   - Установлен: `sk-ant-api03-zECMVi-...` (скомпрометирован в чате!)
+   - Нужно сгенерировать НОВЫЙ ключ на https://console.anthropic.com/
+
+2. **Старая версия SDK не поддерживает новые модели**
+   - Установлено: `anthropic>=0.40.0`
+   - Возможно нужно обновить до последней версии
+
+3. **Аккаунт не имеет доступа к Claude API**
+   - Нужно проверить на https://console.anthropic.com/
+   - Убедиться что API keys активны
+
+**РЕШЕНИЕ:**
+```bash
+# 1. Создай НОВЫЙ API ключ (старый скомпрометирован!)
+# Зайди на: https://console.anthropic.com/settings/keys
+# Создай новый ключ
+
+# 2. Установи на Railway:
+railway variables --set ANTHROPIC_API_KEY=sk-ant-api03-НОВЫЙ-КЛЮЧ-ЗДЕСЬ
+
+# 3. Проверь работает ли ключ локально:
+export ANTHROPIC_API_KEY="sk-ant-api03-..."
+python3 -c "
+import anthropic
+client = anthropic.Anthropic()
+response = client.messages.create(
+    model='claude-3-5-sonnet-20241022',
+    max_tokens=100,
+    messages=[{'role': 'user', 'content': 'Hi'}]
+)
+print(response)
+"
+```
+
+---
+
+### 2. Cloudflare R2 Storage НЕ работает (КРИТИЧНО!)
+
+**Проблема:**
+Видео сохраняются в `/tmp/utm-videos/` вместо R2, и удаляются после каждого деплоя.
+
+**Лог:** Нет логов `"✅ Cloudflare R2 storage initialized"`
+
+**Диагностика:**
+```bash
+# Проверить переменные на Railway:
+railway variables | grep R2
+
+# Должно быть:
+# R2_ENDPOINT_URL=https://...r2.cloudflarestorage.com
+# R2_ACCESS_KEY_ID=...
+# R2_SECRET_ACCESS_KEY=...
+# R2_CLIENT_ASSETS_BUCKET=client-assets
+# R2_MARKET_BENCHMARKS_BUCKET=market-benchmarks
+```
+
+**РЕШЕНИЕ:**
+```bash
+# Проверь что ВСЕ переменные установлены:
+railway variables
+
+# Если R2_ENDPOINT_URL не установлен:
+railway variables --set R2_ENDPOINT_URL=https://6ee0ab413773d78009626328b3e8d6bf.r2.cloudflarestorage.com
+
+# Триггер нового деплоя чтобы применить:
+git commit --allow-empty -m "trigger redeploy for R2"
+git push origin main
+
+# После деплоя проверь логи:
+railway logs | grep "Storage initialization"
+# Должно быть: "✅ Cloudflare R2 storage initialized"
+```
+
+---
+
+### 3. Видео не анализируются (Следствие проблемы #1)
+
+**Симптомы:**
+- Нажимаешь "Analyze" → показывает "✅ Анализ завершен!"
+- Но поля остаются: `hook_type: unknown`, `emotion: unknown`
+
+**Причина:**
+Claude API возвращает 404 → анализ фейлится → возвращаются дефолтные значения "unknown"
+
+**Что происходит в коде:**
+```python
+# utils/video_analyzer.py
+def analyze_video_with_retry(video_path: str, max_retries: int = 3) -> Dict:
+    for attempt in range(max_retries):
+        result = analyze_video_with_claude(video_path)
+        if result:
+            return result  # Успех
+        if attempt < max_retries - 1:
+            time.sleep(2 ** attempt)
+    
+    # Если все 3 попытки failed → возвращаем defaults
+    return {
+        "hook_type": "unknown",
+        "emotion": "unknown",
+        "pacing": "medium",
+        ...
+    }
+```
+
+**РЕШЕНИЕ:**
+Исправить проблему #1 (Claude API ключ)
+
+---
+
+## 🔧 ФАЙЛЫ С КОНФИГУРАЦИЕЙ
+
+### Backend environment variables (Railway)
+```bash
+# Database
+DATABASE_URL=postgresql://...
+
+# Redis
+REDIS_URL=redis://...
+
+# Claude API (НУЖЕН НОВЫЙ КЛЮЧ!)
+ANTHROPIC_API_KEY=sk-ant-api03-***COMPROMISED-NEED-NEW-KEY***
+
+# R2 Storage (ПРОВЕРИТЬ!)
+R2_ENDPOINT_URL=https://6ee0ab413773d78009626328b3e8d6bf.r2.cloudflarestorage.com
+R2_ACCESS_KEY_ID=c0ba92ab5b9288f3b8d8c26d580ce344
+R2_SECRET_ACCESS_KEY=9edacc3ae753752c21544c86c12d24cb53fc5fe3654830...
+R2_CLIENT_ASSETS_BUCKET=client-assets
+R2_MARKET_BENCHMARKS_BUCKET=market-benchmarks
+STORAGE_TYPE=r2  # ✅ Установлен
+```
+
+### Frontend environment variables (Vercel)
+```bash
+VITE_API_URL=https://web-production-6cbde.up.railway.app
+```
+
+---
+
+## 📝 КОД, КОТОРЫЙ НУЖНО ПРОВЕРИТЬ
+
+### 1. utils/video_analyzer.py (строка 237)
+```python
+response = client.messages.create(
+    model="claude-3-5-sonnet-latest",  # ← Проверить что модель существует
+    max_tokens=2048,
+    messages=[{"role": "user", "content": content}]
+)
+```
+
+**Возможные модели для тестирования:**
+- `claude-3-5-sonnet-20241022` (новейшая на момент написания)
+- `claude-3-sonnet-20240229` (старая, но стабильная)
+- `claude-3-opus-20240229` (самая мощная)
+
+### 2. utils/storage.py (строка 37-55)
+```python
+def __init__(self):
+    # Debug logs добавлены!
+    logger.info(f"🔍 Storage initialization:")
+    logger.info(f"   R2_ENDPOINT_URL: {R2_ENDPOINT_URL[:30] + '...' if R2_ENDPOINT_URL else 'NOT SET'}")
+    
+    if all([R2_ENDPOINT_URL, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY]):
+        self.storage_type = "r2"
+        # Инициализация R2...
+    else:
+        self.storage_type = "local"
+        # Фоллбэк на /tmp/...
+```
+
+**Проверить логи при старте:**
+```bash
+railway logs | grep "Storage initialization"
+```
+
+---
+
+## 🚀 ПЛАН ДЕЙСТВИЙ (В ПОРЯДКЕ ПРИОРИТЕТА)
+
+### ШАГ 1: Исправить Claude API (КРИТИЧНО!)
+
+```bash
+# 1.1 Создать НОВЫЙ API ключ
+# Открыть: https://console.anthropic.com/settings/keys
+# Нажать: "Create Key"
+# Скопировать: sk-ant-api03-...
+
+# 1.2 Проверить ключ локально
+export ANTHROPIC_API_KEY="sk-ant-api03-NEW-KEY"
+python3 << 'PYTHON'
+import anthropic
+client = anthropic.Anthropic()
+try:
+    response = client.messages.create(
+        model="claude-3-5-sonnet-20241022",
+        max_tokens=50,
+        messages=[{"role": "user", "content": "Hi"}]
+    )
+    print("✅ API KEY WORKS!")
+    print(f"Model: {response.model}")
+    print(f"Response: {response.content[0].text}")
+except Exception as e:
+    print(f"❌ ERROR: {e}")
+PYTHON
+
+# 1.3 Если работает - установить на Railway
+railway variables --set ANTHROPIC_API_KEY="sk-ant-api03-NEW-KEY"
+
+# 1.4 Подождать деплоя (1-2 минуты)
+
+# 1.5 Протестировать:
+# - Загрузить видео на https://creative-optimizer.vercel.app/upload
+# - Нажать Analyze
+# - Проверить логи: railway logs | grep "Claude API"
+```
+
+### ШАГ 2: Проверить R2 Storage
+
+```bash
+# 2.1 Проверить переменные
+railway variables | grep R2
+
+# 2.2 Если R2_ENDPOINT_URL пустой - установить:
+railway variables --set R2_ENDPOINT_URL=https://6ee0ab413773d78009626328b3e8d6bf.r2.cloudflarestorage.com
+
+# 2.3 Триггер деплоя
+git commit --allow-empty -m "test R2 storage"
+git push origin main
+
+# 2.4 Проверить логи при старте
+railway logs --tail 100 | grep "Storage initialization"
+
+# Должно быть:
+# 🔍 Storage initialization:
+#    R2_ENDPOINT_URL: https://6ee0ab413773d78009...
+#    R2_ACCESS_KEY_ID: ***e344
+#    R2_SECRET_ACCESS_KEY: ***f830
+# ✅ Cloudflare R2 storage initialized
+```
+
+### ШАГ 3: Финальный тест
+
+```bash
+# 3.1 Загрузить видео
+# Открыть: https://creative-optimizer.vercel.app/upload
+# Загрузить любой mp4 файл
+
+# 3.2 Проверить что видео в R2 (в логах)
+railway logs | grep "Client video uploaded"
+# Должно быть: "✅ Client video uploaded to PRIVATE R2: videos/client_xxx/yyy.mp4"
+
+# 3.3 Нажать Analyze
+
+# 3.4 Проверить результат (в логах)
+railway logs | grep "Analysis completed"
+# Должно быть: "✅ Analysis completed: hook_type=problem_solution, emotion=hope"
+
+# 3.5 Проверить UI
+# Должны обновиться поля:
+# - Hook type: "problem_solution" (не "unknown")
+# - Emotion: "hope" (не "unknown")
+# - Pain: "no_time", "lack_results", etc.
+```
+
+---
+
+## 📌 ВАЖНЫЕ ССЫЛКИ
+
+### Production URLs
+- **Frontend:** https://creative-optimizer.vercel.app
+- **Backend API:** https://web-production-6cbde.up.railway.app
+- **Health Check:** https://web-production-6cbde.up.railway.app/health
+- **API Docs:** https://web-production-6cbde.up.railway.app/docs
+
+### External Services
+- **Anthropic Console:** https://console.anthropic.com/
+- **Anthropic API Keys:** https://console.anthropic.com/settings/keys
+- **Cloudflare Dashboard:** https://dash.cloudflare.com/
+- **Railway Dashboard:** https://railway.app/
+- **Vercel Dashboard:** https://vercel.com/
+
+### Documentation
+- **Anthropic API Docs:** https://docs.anthropic.com/
+- **Claude Models List:** https://docs.anthropic.com/en/docs/about-claude/models
+
+---
+
+## 🐛 ИЗВЕСТНЫЕ БАГИ И WORKAROUNDS
+
+### БАГ 1: Видео теряются после деплоя
+**Причина:** Railway использует ephemeral filesystem  
+**Workaround:** Загружать видео заново после каждого деплоя  
+**Решение:** Исправить R2 storage (см. ШАГ 2)
+
+### БАГ 2: Старые креативы с "unknown" статусом
+**Причина:** Видео анализировались когда Claude API не работал  
+**Workaround:** Удалить старые креативы (кнопка Delete) и загрузить заново  
+**Решение:** Исправить Claude API (см. ШАГ 1)
+
+### БАГ 3: Фильтры "significant", "in progress", "scale ready" пустые
+**Причина:** Фильтры работают по CVR и conversions, но у тестовых видео нет метрик  
+**Workaround:** Добавить метрики вручную через `/api/v1/creative/creatives/{id}/metrics`  
+**Решение:** Использовать с реальными кампаниями где есть clicks/conversions
+
+---
+
+## 📦 ПОСЛЕДНИЕ КОММИТЫ
+
+```
+81f9d11 - fix: use claude-3-5-sonnet-latest instead of specific version
+cddc217 - debug: add detailed storage initialization logs  
+92d767f - fix: use correct Claude model name (claude-3-5-sonnet-20240620)
+ffd5ac9 - fix: update anthropic to latest version (>=0.40.0)
+6faf491 - fix: support local file paths in video analysis
+6a389b1 - fix: implement R2 video download for Claude Vision analysis
+```
+
+---
+
+## 🎯 СЛЕДУЮЩИЕ ШАГИ
+
+1. **СРОЧНО:** Создать новый ANTHROPIC_API_KEY (старый скомпрометирован)
+2. Проверить R2 storage переменные на Railway
+3. Протестировать анализ с новым ключом
+4. Применить миграции БД: `alembic upgrade head` (для поля `niche`)
+5. Раскомментировать benchmark seeding в `api/main.py`
+6. Добавить админку с регистрацией пользователей
+
+---
+
+## 📞 КОНТАКТЫ ДЛЯ СЛЕДУЮЩЕЙ СЕССИИ
+
+**Текущие проблемы:**
+1. ❌ Claude API 404 - нужен новый ключ
+2. ❌ R2 Storage не работает - проверить переменные
+3. ✅ Все остальное работает
+
+**Для продолжения нужно:**
+- Новый ANTHROPIC_API_KEY от https://console.anthropic.com/
+- Проверить R2 переменные на Railway
+- Протестировать загрузку + анализ
+
+**Конец отчета - 2026-01-17**
+
