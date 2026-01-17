@@ -102,6 +102,31 @@ async def upload_creative(
         )
 
         # Create database record
+        # Extract video duration
+        duration_seconds = None
+        try:
+            import cv2
+            import tempfile
+            import os
+
+            # Save to temp file for analysis
+            with tempfile.NamedTemporaryFile(delete=False, suffix='.mp4') as temp_file:
+                temp_file.write(video_content)
+                temp_path = temp_file.name
+
+            # Get duration using OpenCV
+            cap = cv2.VideoCapture(temp_path)
+            fps = cap.get(cv2.CAP_PROP_FPS)
+            frame_count = cap.get(cv2.CAP_PROP_FRAME_COUNT)
+            if fps > 0:
+                duration_seconds = int(frame_count / fps)
+            cap.release()
+
+            # Cleanup temp file
+            os.unlink(temp_path)
+        except Exception as e:
+            logger.warning(f"⚠️ Could not extract video duration: {e}")
+
         creative = Creative(
             id=uuid.uuid4(),
             user_id=uuid.UUID(anonymous_user_id),
@@ -114,6 +139,8 @@ async def upload_creative(
             pacing="medium",
             predicted_cvr=0.05,  # Дефолтное значение
             campaign_tag=campaign_tag,
+            status="testing",  # Set to testing so it appears in "In Progress" tab
+            duration_seconds=duration_seconds,  # Video length for display
             is_public=False  # MVP videos are private
         )
 
@@ -184,6 +211,8 @@ async def list_creatives(
         "conversions": c.conversions or 0,
         "analysis_status": c.analysis_status or "pending",
         "deeply_analyzed": c.deeply_analyzed or False,
+        "status": c.status or "draft",  # Added for frontend filtering
+        "duration_seconds": c.duration_seconds,  # Added for frontend display
         "created_at": c.created_at.isoformat() if c.created_at else None
     } for c in creatives]
 
