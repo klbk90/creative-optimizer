@@ -275,8 +275,10 @@ Respond ONLY in valid JSON format:
         response_text = response.content[0].text
         json_match = re.search(r'```json\s*(.*?)\s*```', response_text, re.DOTALL)
         result = json.loads(json_match.group(1) if json_match else response_text)
-        
-        logger.info(f"✅ Claude analyzed: {result['hook_type']} + {result['emotion']}")
+
+        # DEBUG: Log full response to see what Claude returns
+        logger.info(f"🔍 FULL CLAUDE RESPONSE: {json.dumps(result, ensure_ascii=False)[:500]}")
+        logger.info(f"✅ Claude analyzed: {result.get('hook_type', 'unknown')} + {result.get('emotion', 'unknown')}")
         return result
     except Exception as e:
         logger.error(f"Claude API error: {e}")
