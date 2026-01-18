@@ -123,6 +123,14 @@ def analyze_video_with_claude(video_path: str) -> Optional[Dict]:
     else:
         # Local file path - check if file exists
         if not os.path.exists(video_path):
+            # Fallback: if /tmp/ file not found, try to find in R2 by filename
+            if video_path.startswith('/tmp/'):
+                logger.warning(f"Local file not found: {video_path}, trying R2 fallback...")
+                filename = os.path.basename(video_path)
+                # Try R2 path: r2://client-assets/{user_id}/{filename}
+                # For now, just return None - user should re-upload
+                logger.error(f"Video file not found: {video_path}. Please re-upload the creative.")
+                return None
             logger.error(f"Video file not found: {video_path}")
             return None
         logger.info(f"Analyzing local video: {video_path}")
@@ -301,5 +309,10 @@ def analyze_video_with_retry(video_path: str, max_retries: int = 3) -> Dict:
         "pacing": "medium",
         "target_audience_pain": "unknown",
         "psychotype": "unknown",
-        "reasoning": "AI analysis failed"
+        "retention_triggers": "unknown",
+        "visual_elements": "unknown",
+        "niche_specific": "unknown",
+        "winning_elements": "Video file not found or analysis failed. Please re-upload the creative.",
+        "timeline": [],
+        "reasoning": "AI analysis failed - video file not found or Claude API error"
     }
