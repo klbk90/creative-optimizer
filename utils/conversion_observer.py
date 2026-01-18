@@ -5,6 +5,7 @@ Conversion Observer - автоматический триггер глубоко
 """
 
 from sqlalchemy.orm import Session
+from sqlalchemy.orm.attributes import flag_modified
 from database.models import Creative, PatternPerformance
 from utils.logger import setup_logger
 from typing import Optional
@@ -129,6 +130,7 @@ def mark_as_deeply_analyzed(creative_id: uuid.UUID, analysis_result: dict, db: S
     creative.features['niche_specific'] = analysis_result.get('niche_specific')
     creative.features['winning_elements'] = analysis_result.get('winning_elements')
     creative.features['timeline'] = analysis_result.get('timeline', [])
+    flag_modified(creative, 'features')
 
     # Помечаем как deeply analyzed
     creative.deeply_analyzed = True

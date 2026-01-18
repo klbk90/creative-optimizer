@@ -12,6 +12,7 @@ Analysis Orchestrator - управление Claude Vision анализом.
 """
 
 from sqlalchemy.orm import Session
+from sqlalchemy.orm.attributes import flag_modified
 from database.models import Creative
 from utils.logger import setup_logger
 from datetime import datetime
@@ -182,6 +183,7 @@ def trigger_analysis(creative: Creative, db: Session, reason: str = "unknown"):
     if not creative.features:
         creative.features = {}
     creative.features['analysis_trigger_reason'] = reason
+    flag_modified(creative, 'features')
 
     db.commit()
 
@@ -294,6 +296,7 @@ def mark_analysis_complete(
     creative.features['niche_specific'] = analysis_result.get('niche_specific')
     creative.features['winning_elements'] = analysis_result.get('winning_elements')
     creative.features['timeline'] = analysis_result.get('timeline', [])
+    flag_modified(creative, 'features')
 
     # Mark as complete
     creative.analysis_status = 'completed'
