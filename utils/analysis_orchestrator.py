@@ -12,7 +12,6 @@ Analysis Orchestrator - управление Claude Vision анализом.
 """
 
 from sqlalchemy.orm import Session
-from sqlalchemy.orm.attributes import flag_modified
 from database.models import Creative
 from utils.logger import setup_logger
 from datetime import datetime
@@ -180,10 +179,9 @@ def trigger_analysis(creative: Creative, db: Session, reason: str = "unknown"):
     creative.analysis_triggered_at = datetime.utcnow()
 
     # Store trigger reason in features
-    if not creative.features:
-        creative.features = {}
-    creative.features['analysis_trigger_reason'] = reason
-    flag_modified(creative, 'features')
+    features_data = creative.features.copy() if creative.features else {}
+    features_data['analysis_trigger_reason'] = reason
+    creative.features = features_data
 
     db.commit()
 
@@ -287,16 +285,18 @@ def mark_analysis_complete(
     creative.ai_reasoning = analysis_result.get('reasoning', '')
 
     # Save extended analysis in features JSON
-    if not creative.features:
-        creative.features = {}
+    # Create new dict to ensure SQLAlchemy detects the change
+    features_data = creative.features.copy() if creative.features else {}
+    features_data['retention_triggers'] = analysis_result.get('retention_triggers')
+    features_data['visual_elements'] = analysis_result.get('visual_elements')
+    features_data['niche_specific'] = analysis_result.get('niche_specific')
+    features_data['winning_elements'] = analysis_result.get('winning_elements')
+    features_data['timeline'] = analysis_result.get('timeline', [])
 
-    # Save fields that don't have dedicated columns
-    creative.features['retention_triggers'] = analysis_result.get('retention_triggers')
-    creative.features['visual_elements'] = analysis_result.get('visual_elements')
-    creative.features['niche_specific'] = analysis_result.get('niche_specific')
-    creative.features['winning_elements'] = analysis_result.get('winning_elements')
-    creative.features['timeline'] = analysis_result.get('timeline', [])
-    flag_modified(creative, 'features')
+    # Assign new dict to trigger SQLAlchemy change detection
+    creative.features = features_data
+
+    logger.info(f"💾 Saving features: {list(features_data.keys())}")
 
     # Mark as complete
     creative.analysis_status = 'completed'
