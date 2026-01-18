@@ -231,7 +231,73 @@ const CreativeLab = () => {
                       </span>
                     </div>
                   )}
+                  {creative.pacing && (
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-gray-600">Pacing:</span>
+                      <span className="px-2 py-0.5 bg-green-100 text-green-700 rounded font-medium">
+                        {creative.pacing}
+                      </span>
+                    </div>
+                  )}
+                  {creative.psychotype && (
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-gray-600">Psychotype:</span>
+                      <span className="px-2 py-0.5 bg-indigo-100 text-indigo-700 rounded font-medium text-xs">
+                        {creative.psychotype}
+                      </span>
+                    </div>
+                  )}
+                  {creative.retention_triggers && (
+                    <div className="flex items-start justify-between text-sm">
+                      <span className="text-gray-600 whitespace-nowrap">Retention:</span>
+                      <span className="px-2 py-0.5 bg-orange-100 text-orange-700 rounded font-medium text-xs text-right">
+                        {creative.retention_triggers}
+                      </span>
+                    </div>
+                  )}
+                  {creative.visual_elements && (
+                    <div className="flex items-start justify-between text-sm">
+                      <span className="text-gray-600 whitespace-nowrap">Visual:</span>
+                      <span className="px-2 py-0.5 bg-cyan-100 text-cyan-700 rounded font-medium text-xs text-right">
+                        {creative.visual_elements}
+                      </span>
+                    </div>
+                  )}
+                  {creative.winning_elements && (
+                    <div className="col-span-2 mt-2 p-2 bg-yellow-50 border border-yellow-200 rounded text-xs">
+                      <span className="font-semibold text-yellow-800">🏆 Winning:</span>
+                      <p className="text-yellow-700 mt-1">{creative.winning_elements}</p>
+                    </div>
+                  )}
                 </div>
+
+                {/* Timeline (Раскадровка) */}
+                {creative.features?.timeline && creative.features.timeline.length > 0 && (
+                  <div className="mt-3 p-3 bg-gradient-to-r from-purple-50 to-blue-50 border border-purple-200 rounded-lg">
+                    <h4 className="text-xs font-bold text-purple-900 mb-2 flex items-center gap-1">
+                      <span>🎬</span> Timeline
+                    </h4>
+                    <div className="space-y-2">
+                      {creative.features.timeline.map((frame, idx) => (
+                        <div key={idx} className="bg-white/70 p-2 rounded border border-purple-100">
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className="px-1.5 py-0.5 bg-purple-600 text-white text-xs font-bold rounded">
+                              {frame.timestamp}
+                            </span>
+                            {frame.cta_presence && (
+                              <span className="px-1.5 py-0.5 bg-green-500 text-white text-xs rounded">CTA</span>
+                            )}
+                          </div>
+                          <p className="text-xs text-gray-700 mb-1">{frame.what_happens}</p>
+                          {frame.retention_hook && (
+                            <p className="text-xs text-orange-600">🎯 {frame.retention_hook}</p>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
 
                 {/* Metrics */}
                 <div className="grid grid-cols-3 gap-2 pt-4 border-t border-gray-100">
