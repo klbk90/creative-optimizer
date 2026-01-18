@@ -277,7 +277,8 @@ Respond ONLY in valid JSON format:
         result = json.loads(json_match.group(1) if json_match else response_text)
 
         # DEBUG: Log full response to see what Claude returns
-        logger.info(f"🔍 FULL CLAUDE RESPONSE: {json.dumps(result, ensure_ascii=False)[:500]}")
+        logger.info(f"🔍 FULL CLAUDE RESPONSE (first 2000 chars): {json.dumps(result, ensure_ascii=False)[:2000]}")
+        logger.info(f"🔍 HAS TIMELINE: {'timeline' in result} | HAS FEATURES: {result.get('timeline') is not None}")
         logger.info(f"✅ Claude analyzed: {result.get('hook_type', 'unknown')} + {result.get('emotion', 'unknown')}")
         return result
     except Exception as e:
