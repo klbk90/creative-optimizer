@@ -247,26 +247,26 @@ const CreativeLab = () => {
                       </span>
                     </div>
                   )}
-                  {creative.retention_triggers && (
+                  {creative.features?.retention_triggers && (
                     <div className="flex items-start justify-between text-sm">
                       <span className="text-gray-600 whitespace-nowrap">Retention:</span>
                       <span className="px-2 py-0.5 bg-orange-100 text-orange-700 rounded font-medium text-xs text-right">
-                        {creative.retention_triggers}
+                        {creative.features.retention_triggers}
                       </span>
                     </div>
                   )}
-                  {creative.visual_elements && (
+                  {creative.features?.visual_elements && (
                     <div className="flex items-start justify-between text-sm">
                       <span className="text-gray-600 whitespace-nowrap">Visual:</span>
                       <span className="px-2 py-0.5 bg-cyan-100 text-cyan-700 rounded font-medium text-xs text-right">
-                        {creative.visual_elements}
+                        {creative.features.visual_elements}
                       </span>
                     </div>
                   )}
-                  {creative.winning_elements && (
+                  {creative.features?.winning_elements && (
                     <div className="col-span-2 mt-2 p-2 bg-yellow-50 border border-yellow-200 rounded text-xs">
                       <span className="font-semibold text-yellow-800">🏆 Winning:</span>
-                      <p className="text-yellow-700 mt-1">{creative.winning_elements}</p>
+                      <p className="text-yellow-700 mt-1">{creative.features.winning_elements}</p>
                     </div>
                   )}
                 </div>
