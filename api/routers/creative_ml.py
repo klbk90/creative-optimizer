@@ -46,6 +46,7 @@ class CreativeListResponse(BaseModel):
     analysis_status: Optional[str] = "pending"
     ai_reasoning: Optional[str] = None
     features: Optional[dict] = {}
+    video_url: Optional[str] = None  # DEBUG: check R2 path
     created_at: str
 
 
@@ -272,6 +273,7 @@ async def list_creatives(
             analysis_status=c.analysis_status or "pending",
             ai_reasoning=c.ai_reasoning,
             features=c.features or {},
+            video_url=c.video_url,  # DEBUG
             created_at=c.created_at.isoformat() if c.created_at else datetime.utcnow().isoformat()
         )
         for c in creatives
