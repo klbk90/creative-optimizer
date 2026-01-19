@@ -287,6 +287,8 @@ class StorageAdapter:
     def _upload_client_to_r2(self, file_content: bytes, filename: str) -> str:
         """Upload client video to R2 client-assets bucket (PRIVATE)."""
         try:
+            logger.info(f"🔄 Uploading to R2: bucket={R2_CLIENT_ASSETS_BUCKET}, key=videos/{filename}, size={len(file_content)} bytes")
+
             # Upload to PRIVATE client bucket
             self.s3_client.put_object(
                 Bucket=R2_CLIENT_ASSETS_BUCKET,
@@ -300,12 +302,14 @@ class StorageAdapter:
             # Access requires presigned URL via API endpoint
             internal_key = f"r2://{R2_CLIENT_ASSETS_BUCKET}/videos/{filename}"
 
-            logger.info(f"✅ Client video uploaded to PRIVATE R2: {filename}")
+            logger.info(f"✅ Client video uploaded to PRIVATE R2: {internal_key}")
             return internal_key
 
         except ClientError as e:
-            logger.error(f"R2 client upload failed: {e}")
+            logger.error(f"❌ R2 client upload failed: {e}")
+            logger.error(f"   Bucket: {R2_CLIENT_ASSETS_BUCKET}, Key: videos/{filename}")
             # Fallback to local
+            logger.warning(f"⚠️  Falling back to local storage")
             return self._upload_to_local(file_content, filename)
 
     def generate_client_video_access_url(self, internal_key: str, expiration: int = 3600) -> str:
