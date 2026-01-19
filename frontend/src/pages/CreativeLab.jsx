@@ -297,7 +297,6 @@ const CreativeLab = () => {
                     </div>
                   </div>
                 )}
-              </div>
 
                 {/* Metrics */}
                 <div className="grid grid-cols-3 gap-2 pt-4 border-t border-gray-100">
