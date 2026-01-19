@@ -1,10 +1,13 @@
 import { Outlet, NavLink } from 'react-router-dom'
-import { LayoutDashboard, Video, Upload, BarChart3, Zap, Users } from 'lucide-react'
+import { LayoutDashboard, Video, Upload, BarChart3, Zap, Users, LogOut } from 'lucide-react'
+import { useAuth } from '../contexts/AuthContext'
 
 const Layout = () => {
+  const { user, logout } = useAuth()
+
   const navItems = [
     { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
-    { to: '/creatives', icon: Video, label: 'Creatives' },
+    { to: '/creative-lab', icon: Video, label: 'Creatives' },
     { to: '/patterns', icon: Zap, label: 'Patterns' },
     { to: '/influencers', icon: Users, label: 'Influencers' },
     { to: '/upload', icon: Upload, label: 'Upload' },
@@ -45,9 +48,23 @@ const Layout = () => {
 
           {/* Footer */}
           <div className="border-t border-gray-200 p-4">
-            <p className="text-xs text-gray-500">
-              AI-powered creative testing
-            </p>
+            <div className="mb-2 flex items-center justify-between">
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium text-gray-900 truncate">
+                  {user?.email}
+                </p>
+                <p className="text-xs text-gray-500">
+                  AI-powered creative testing
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={logout}
+              className="w-full flex items-center justify-center gap-2 px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+            >
+              <LogOut className="h-4 w-4" />
+              Logout
+            </button>
           </div>
         </div>
       </aside>

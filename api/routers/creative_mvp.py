@@ -69,7 +69,8 @@ async def upload_creative(
     product_category: str = Form(default="language_learning"),
     creative_type: str = Form(default="ugc"),
     campaign_tag: str = Form(None),  # Упрощенная метка вместо UTM
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user)
 ):
     """
     Упрощенная загрузка креатива для MVP
@@ -87,10 +88,6 @@ async def upload_creative(
         # Get storage instance
         storage = get_storage()
 
-        # Generate a unique user_id for MVP (anonymous upload)
-        # In production, this would come from authentication
-        anonymous_user_id = str(uuid.uuid4())
-
         # Read video content
         video_content = await video.read()
 
@@ -98,7 +95,7 @@ async def upload_creative(
         internal_key = storage.upload_client_video(
             file_content=video_content,
             filename=video.filename,
-            user_id=anonymous_user_id
+            user_id=str(current_user.id)
         )
 
         # Create database record
@@ -129,7 +126,7 @@ async def upload_creative(
 
         creative = Creative(
             id=uuid.uuid4(),
-            user_id=uuid.UUID(anonymous_user_id),
+            user_id=current_user.id,
             name=creative_name,
             creative_type=creative_type,
             product_category=product_category,
@@ -181,12 +178,13 @@ async def upload_creative(
 async def list_creatives(
     limit: int = 100,
     campaign_tag: Optional[str] = None,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user)
 ):
     """
-    Список всех креативов с фильтрацией по метке
+    Список креативов текущего пользователя с фильтрацией по метке
     """
-    query = db.query(Creative)
+    query = db.query(Creative).filter(Creative.user_id == current_user.id)
 
     if campaign_tag:
         query = query.filter(Creative.campaign_tag == campaign_tag)
@@ -225,12 +223,16 @@ async def update_metrics(
     impressions: int = Form(...),
     clicks: int = Form(...),
     conversions: int = Form(...),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user)
 ):
     """
     Обновить метрики креатива вручную
     """
-    creative = db.query(Creative).filter(Creative.id == uuid.UUID(creative_id)).first()
+    creative = db.query(Creative).filter(
+        Creative.id == uuid.UUID(creative_id),
+        Creative.user_id == current_user.id
+    ).first()
 
     if not creative:
         raise HTTPException(status_code=404, detail="Creative not found")
@@ -255,13 +257,17 @@ async def update_metrics(
 @router.delete("/creatives/{creative_id}")
 async def delete_creative(
     creative_id: str,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user)
 ):
     """
     Удалить креатив из базы данных
     """
     try:
-        creative = db.query(Creative).filter(Creative.id == uuid.UUID(creative_id)).first()
+        creative = db.query(Creative).filter(
+            Creative.id == uuid.UUID(creative_id),
+            Creative.user_id == current_user.id
+        ).first()
 
         if not creative:
             raise HTTPException(status_code=404, detail="Creative not found")
