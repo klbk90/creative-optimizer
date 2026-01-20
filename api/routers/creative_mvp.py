@@ -182,9 +182,18 @@ async def list_creatives(
     current_user = Depends(get_current_user)
 ):
     """
-    Список креативов текущего пользователя с фильтрацией по метке
+    Список креативов: свои + общие бенчмарки
     """
-    query = db.query(Creative).filter(Creative.user_id == current_user.id)
+    from sqlalchemy import or_
+
+    # Показываем свои креативы ИЛИ публичные бенчмарки
+    query = db.query(Creative).filter(
+        or_(
+            Creative.user_id == current_user.id,
+            Creative.is_public == True,
+            Creative.is_benchmark == True
+        )
+    )
 
     if campaign_tag:
         query = query.filter(Creative.campaign_tag == campaign_tag)
