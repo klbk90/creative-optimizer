@@ -1,7 +1,7 @@
 """add psychotype field to creatives and pattern_performance
 
 Revision ID: add_psychotype_field
-Revises: add_market_ingestion_fields
+Revises: market_ingestion_001
 Create Date: 2026-01-10
 
 """
@@ -11,7 +11,7 @@ import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
 revision = 'add_psychotype_field'
-down_revision = 'add_market_ingestion_fields'
+down_revision = 'market_ingestion_001'
 branch_labels = None
 depends_on = None
 
