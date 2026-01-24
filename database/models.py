@@ -894,6 +894,98 @@ class UserSession(Base):
         return f"<UserSession(customer={self.customer_id}, utm={self.utm_id}, touches={self.touch_count})>"
 
 
+# ==================== INFLUENCER ====================
+
+# Статусы инфлюенсера в воронке
+INFLUENCER_STATUS_NEW = "new"                    # Только что найден скрапером
+INFLUENCER_STATUS_EMAIL_FOUND = "email_found"    # Email найден через RocketReach
+INFLUENCER_STATUS_CONTACTED = "contacted"        # Письмо отправлено
+INFLUENCER_STATUS_RESPONDED = "responded"        # Ответил
+INFLUENCER_STATUS_AGREED = "agreed"              # Согласился на сотрудничество
+INFLUENCER_STATUS_POSTED = "posted"              # Опубликовал контент
+INFLUENCER_STATUS_REJECTED = "rejected"          # Отказался
+
+
+class Influencer(Base):
+    """
+    Инфлюенсеры для outreach кампаний.
+
+    Пайплайн:
+    1. Скрапер (Apify) собирает по хэштегам → status=new
+    2. RocketReach пробивает email → status=email_found
+    3. Отправляем письмо → status=contacted
+    4. Ответил/согласился/опубликовал → status updates
+    """
+
+    __tablename__ = "influencers"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True)
+
+    # Основные данные (из скрапера)
+    handle = Column(String(100), nullable=False, index=True)  # @username без @
+    name = Column(String(200), nullable=True)  # Display name
+    bio = Column(Text, nullable=True)
+    platform = Column(String(50), nullable=False, index=True)  # tiktok, instagram, youtube
+
+    # Ниша (ключевое поле для фильтрации)
+    niche = Column(String(100), nullable=False, index=True)  # fitness, edtech, finance, etc.
+
+    # Метрики
+    followers = Column(Integer, nullable=False, default=0)
+    following = Column(Integer, nullable=True)
+    engagement_rate = Column(Integer, nullable=True)  # ER * 10000 (e.g., 350 = 3.5%)
+    avg_views = Column(Integer, nullable=True)  # Средние просмотры на видео
+    total_likes = Column(BigInteger, nullable=True)
+    total_videos = Column(Integer, nullable=True)
+
+    # Email (из RocketReach или вручную)
+    email = Column(String(255), nullable=True, index=True)
+    email_source = Column(String(50), nullable=True)  # rocketreach, manual, csv, bio
+    email_verified = Column(Boolean, default=False)
+
+    # Статус воронки
+    status = Column(String(50), nullable=False, default=INFLUENCER_STATUS_NEW, index=True)
+
+    # Источник данных
+    source_keyword = Column(String(200), nullable=True)  # По какому ключевику/хэштегу нашли
+    source_hashtag = Column(String(200), nullable=True)  # Конкретный хэштег
+    scraped_from = Column(String(50), default="apify")  # apify, manual, csv
+
+    # Контакт и outreach
+    contacted_at = Column(DateTime, nullable=True)
+    responded_at = Column(DateTime, nullable=True)
+    agreed_at = Column(DateTime, nullable=True)
+    posted_at = Column(DateTime, nullable=True)
+
+    # Связь с кампанией (когда инфлюенсер согласился)
+    traffic_source_id = Column(UUID(as_uuid=True), ForeignKey("traffic_sources.id"), nullable=True)
+    utm_id = Column(String(100), nullable=True, index=True)  # Уникальная ссылка для отслеживания
+
+    # Дополнительно
+    notes = Column(Text, nullable=True)
+    extra_data = Column(JSON, default={})  # Дополнительные данные из скрапера
+
+    # Timestamps
+    scraped_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    # Relationships
+    user = relationship("User")
+    traffic_source = relationship("TrafficSource")
+
+    # Уникальность: один инфлюенсер на платформе на пользователя
+    __table_args__ = (
+        Index('idx_influencer_user_platform_handle', 'user_id', 'platform', 'handle', unique=True),
+        Index('idx_influencer_niche_status', 'niche', 'status'),
+        Index('idx_influencer_followers', 'followers'),
+    )
+
+    def __repr__(self):
+        return f"<Influencer(handle=@{self.handle}, platform={self.platform}, followers={self.followers}, status={self.status})>"
+
+
 # Additional indexes for TikTok tracking (commented for MVP)
 # Index("idx_traffic_sources_utm_lookup", TrafficSource.utm_source, TrafficSource.utm_campaign, TrafficSource.created_at.desc())
 # Index("idx_conversions_created_at_desc", Conversion.created_at.desc())

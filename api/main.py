@@ -15,7 +15,7 @@ from task_queue import get_queue
 from utils.logger import setup_logger
 
 # Import routers
-from api.routers import auth, utm, analytics, landing, creative_ml, rudderstack, edtech_landing, landing_pro, pattern_optimization, influencer_search, creative_admin, market_intelligence, recommendations, creative_mvp, influencer_import, simple_tracking
+from api.routers import auth, utm, analytics, landing, creative_ml, rudderstack, edtech_landing, landing_pro, pattern_optimization, influencer_search, creative_admin, market_intelligence, recommendations, creative_mvp, influencer_import, simple_tracking, influencer_scraper
 # New clean ML router: creative_ml (working!)
 # RudderStack integration: rudderstack (Bayesian update!)
 # EdTech landing: edtech_landing (NEW - for micro-influencer testing!)
@@ -234,6 +234,7 @@ app.include_router(market_intelligence.router)  # Market Intelligence (Facebook 
 app.include_router(recommendations.router, prefix="/api/v1/recommendations", tags=["Recommendations"])  # DECISION MAKING ENGINE - key feature!
 app.include_router(creative_mvp.router)  # MVP router with video upload to R2
 app.include_router(influencer_import.router)  # Influencer CSV import and management
+app.include_router(influencer_scraper.router)  # Influencer scraper with Apify TikTok integration
 app.include_router(simple_tracking.router)  # Simple conversion tracking (no auth)
 # app.include_router(channels.router, prefix="/api/v1/channels", tags=["Channels"])
 # app.include_router(posts.router, prefix="/api/v1/posts", tags=["Posts"])
