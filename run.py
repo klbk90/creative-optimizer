@@ -21,21 +21,83 @@ def init_alembic_if_needed():
             result = conn.execute(text(
                 "SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'alembic_version')"
             ))
-            exists = result.scalar()
+            table_exists = result.scalar()
 
-            if not exists:
-                print("📝 Initializing alembic_version table...")
-                # Mark the version before the new influencers migration as current
-                # This assumes all previous migrations were manually applied
-                conn.execute(text("""
-                    CREATE TABLE alembic_version (version_num VARCHAR(32) NOT NULL PRIMARY KEY)
+            # Get current version if table exists
+            current_alembic_version = None
+            if table_exists:
+                try:
+                    result = conn.execute(text("SELECT version_num FROM alembic_version"))
+                    current_alembic_version = result.scalar()
+                    print(f"📌 Current alembic version: {current_alembic_version}")
+                except:
+                    pass
+
+            # Only init if table doesn't exist OR version is None (empty table)
+            if not table_exists or current_alembic_version is None:
+                print("📝 Detecting current migration state...")
+
+                # Check which columns exist to determine migration version
+                # Check for influencers table (last migration)
+                result = conn.execute(text(
+                    "SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'influencers')"
+                ))
+                has_influencers = result.scalar()
+
+                # Check for niche field (add_niche_weights_20260112)
+                result = conn.execute(text("""
+                    SELECT EXISTS (
+                        SELECT FROM information_schema.columns
+                        WHERE table_name = 'creatives' AND column_name = 'niche'
+                    )
                 """))
-                # Mark as being at the last migration before influencers
-                conn.execute(text("""
-                    INSERT INTO alembic_version (version_num) VALUES ('add_niche_weights_20260112')
-                """))
+                has_niche = result.scalar()
+
+                # Determine current migration version
+                if has_influencers:
+                    current_version = 'add_influencers_20260124'
+                    print("✅ Detected: influencers table exists")
+                elif has_niche:
+                    current_version = 'add_niche_weights_20260112'
+                    print("✅ Detected: niche field exists")
+                else:
+                    # Assume all older migrations are applied
+                    current_version = 'add_niche_weights_20260112'
+                    print("⚠️  Could not detect exact version, defaulting to add_niche_weights_20260112")
+
+                # Create alembic_version table
+                if not table_exists:
+                    conn.execute(text("""
+                        CREATE TABLE alembic_version (version_num VARCHAR(32) NOT NULL PRIMARY KEY)
+                    """))
+                    conn.execute(text(f"""
+                        INSERT INTO alembic_version (version_num) VALUES ('{current_version}')
+                    """))
+                else:
+                    # Update existing empty table
+                    conn.execute(text(f"""
+                        INSERT INTO alembic_version (version_num) VALUES ('{current_version}')
+                    """))
                 conn.commit()
-                print("✅ Initialized alembic_version to 'add_niche_weights_20260112'")
+                print(f"✅ Initialized alembic_version to '{current_version}'")
+            else:
+                # Table exists and has a version - check if we need to fix it
+                # If current version is too old and DB has newer tables, update it
+                if current_alembic_version:
+                    result = conn.execute(text(
+                        "SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'influencers')"
+                    ))
+                    has_influencers = result.scalar()
+
+                    if has_influencers and current_alembic_version != 'add_influencers_20260124':
+                        print(f"⚠️  DB has influencers table but alembic version is {current_alembic_version}")
+                        print("📝 Updating to correct version...")
+                        conn.execute(text(f"""
+                            UPDATE alembic_version SET version_num = 'add_influencers_20260124'
+                        """))
+                        conn.commit()
+                        print("✅ Updated alembic_version to 'add_influencers_20260124'")
+
     except Exception as e:
         print(f"⚠️  Could not init alembic: {e}")
 
