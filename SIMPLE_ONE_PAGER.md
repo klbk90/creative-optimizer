@@ -205,12 +205,6 @@ Next Iteration  → Предсказания становятся точнее
 - Budget auto-optimization
 - Pattern clustering
 
-### 💡 **Roadmap (3 месяца):**
-- Telegram bot для quick UTM generation
-- Instagram Reels integration
-- YouTube Shorts scraper
-- White-label для агентств
-
 ---
 
 ## 📊 Ключевые метрики в дашборде
