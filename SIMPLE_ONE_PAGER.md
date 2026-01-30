@@ -244,15 +244,6 @@ Next Iteration  → Предсказания становятся точнее
 
 ---
 
-## 🔗 Live Links
-
-- **Live Demo:** https://creative-optimizer.vercel.app
-- **API Docs:** https://web-production-6cbde.up.railway.app/docs
-- **Health Check:** https://web-production-6cbde.up.railway.app/health
-- **GitHub:** https://github.com/klbk90/creative-optimizer
-
----
-
 ## 💡 Простыми словами
 
 **Представь:**
